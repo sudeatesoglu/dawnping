@@ -20,7 +20,8 @@
     "useUnknownInCatchVariables": true,
 
     "verbatimModuleSyntax": true,
-    "rewriteRelativeImportExtensions": true,
+    // Imports use .ts extensions (Node type stripping style); tsc never emits.
+    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

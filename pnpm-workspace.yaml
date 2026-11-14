@@ -1,0 +1,9 @@
+# pnpm settings for this single-package repository (no workspace packages).
+
+# Dependency lifecycle scripts (postinstall, etc.) are blocked by default
+# because they run arbitrary code on install. Every package that ships one
+# must be listed here explicitly: true = allowed, false = reviewed and denied.
+allowBuilds:
+  # Its postinstall only runs `lefthook install`; we do that ourselves in the
+  # `prepare` script, so the third-party script never needs to run.
+  lefthook: false

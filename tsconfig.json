@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The whole project, including tests and config files, with Node types.
+  // src/core is additionally checked by src/core/tsconfig.json without them.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "*.config.ts"]
+}

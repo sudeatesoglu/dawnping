@@ -25,6 +25,22 @@ Several tools already do this with a fixed schedule. dawnping's goal is to decid
 - How the window is anchored (exact time vs. rounded to the hour) is not officially documented. dawnping measures and lets you configure it.
 - macOS first. Your Mac has to be awake at trigger time (dawnping will help you set that up).
 
+## Development
+
+Requires Node.js 22.12 or newer and pnpm.
+
+```sh
+pnpm install         # also installs the git hooks
+pnpm build           # bundle the CLI into dist/
+node dist/cli.js --help
+
+pnpm lint            # Biome lint and format check
+pnpm typecheck       # type-check, including the pure-core boundary
+pnpm test            # unit tests (pnpm test:coverage for coverage)
+```
+
+Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
+
 ## License
 
 Not decided yet.

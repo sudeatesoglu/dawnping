@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Strict compiler options shared by every tsconfig in the repository.
+  "compilerOptions": {
+    "target": "ES2024",
+    // ES only: no DOM. Node globals come from @types/node where a tsconfig
+    // opts in, so platform APIs cannot leak in unnoticed.
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": [],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+
+    "verbatimModuleSyntax": true,
+    // Imports use .ts extensions (Node type stripping style); tsc never emits.
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    // tsdown builds the CLI; tsc only type-checks.
+    "noEmit": true
+  }
+}

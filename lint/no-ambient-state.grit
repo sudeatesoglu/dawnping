@@ -1,0 +1,7 @@
+or {
+  `Date.now()`,
+  `new Date()`,
+  `Math.random()`
+} as $call where {
+  register_diagnostic(span=$call, message="Core logic must not read the clock or randomness directly. Pass it in through a port (see Clock).")
+}

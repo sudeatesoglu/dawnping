@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Enforces that the core stays pure: no Node types and no DOM, so importing
+  // node:fs, node:child_process or using globals like `process` or `console`
+  // is a type error here. Tests are excluded because the test runner itself
+  // depends on Node; they are checked by the root tsconfig.json.
+  "extends": "../../tsconfig.base.json",
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.test.ts"]
+}

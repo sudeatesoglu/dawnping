@@ -1,0 +1,230 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+    # "edited" re-runs the PR title check when only the title changes.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+# A newer push to the same branch or PR makes older runs obsolete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the default token can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions are pinned to full commit SHAs: tags can be moved, SHAs cannot.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test with coverage
+        run: pnpm test:coverage
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
+      # The exact bundle users get; the macOS jobs run it on every
+      # supported Node version.
+      - name: Upload build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  macos:
+    name: Test on macOS (Node ${{ matrix.node }})
+    runs-on: macos-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lowest version in package.json "engines" and the current LTS.
+        node: ["22.12.0", "24"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # Some build tools (tsdown) need a newer Node than the CLI itself, so
+      # this job tests the source without building.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+  smoke:
+    name: Smoke test on macOS (Node ${{ matrix.node }})
+    needs: quality
+    runs-on: macos-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.12.0", "24"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # Only runtime dependencies, as a user installing from npm gets.
+      - name: Install production dependencies
+        run: pnpm install --frozen-lockfile --prod
+
+      - name: Download build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Smoke test the CLI
+        run: |
+          expected=$(node -p "require('./package.json').version")
+          actual=$(node dist/cli.js --version)
+          echo "dawnping --version: $actual"
+          test "$actual" = "$expected"
+
+  conventions:
+    name: Commit messages and PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so commitlint can walk every commit in the PR.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # main only accepts dev. Enforcing this here is what makes it safe to
+      # skip commit linting for main below.
+      - name: Only dev may merge into main
+        if: ${{ github.base_ref == 'main' }}
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" != "dev" ] || [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::Pull requests into main must come from dev in this repository."
+            exit 1
+          fi
+
+      # Into main, the commits are dev's squash commits: each was already
+      # checked as its pull request's title. Re-linting them would fail on
+      # the " (#N)" suffix that squash merges append to the header.
+      - name: Lint commit messages
+        if: ${{ github.base_ref != 'main' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+      # The PR title becomes the squash-merge commit header on dev.
+      # It is attacker-controlled text: pass it through an env variable,
+      # never interpolate ${{ }} directly into the shell script.
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n\nWhy:\nPR title check.\n' "$PR_TITLE" | pnpm exec commitlint --verbose
+
+  # The single required status check. Branch rulesets reference only this
+  # name, so renaming jobs or changing the Node matrix cannot leave a PR
+  # waiting forever on a check that no longer exists.
+  ci-passed:
+    name: CI passed
+    if: ${{ always() }}
+    needs: [quality, macos, smoke, conventions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check job results
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          MACOS: ${{ needs.macos.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          CONVENTIONS: ${{ needs.conventions.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "quality=$QUALITY macos=$MACOS smoke=$SMOKE conventions=$CONVENTIONS"
+          for result in "$QUALITY" "$MACOS" "$SMOKE"; do
+            [ "$result" = "success" ] || exit 1
+          done
+          # conventions only runs on pull requests.
+          if [ "$EVENT" = "pull_request" ]; then
+            [ "$CONVENTIONS" = "success" ] || exit 1
+          fi

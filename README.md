@@ -1,5 +1,7 @@
 # dawnping
 
+[![CI](https://github.com/sudeatesoglu/dawnping/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/sudeatesoglu/dawnping/actions/workflows/ci.yml)
+
 Start your Claude Code usage window at the right time, so its resets land inside your working day instead of after it.
 
 > **Status:** early development. Nothing to install yet.
@@ -39,7 +41,7 @@ pnpm typecheck       # type-check, including the pure-core boundary
 pnpm test            # unit tests (pnpm test:coverage for coverage)
 ```
 
-Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
+Architecture decisions are recorded in [`docs/adr/`](docs/adr/). Branch protection lives in [`.github/rulesets/`](.github/rulesets/) and is applied with `node scripts/apply-rulesets.mjs` (needs admin access through the GitHub CLI).
 
 ## License
 

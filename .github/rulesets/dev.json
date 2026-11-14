@@ -37,19 +37,7 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "Lint, typecheck, test, build",
-            "integration_id": 15368
-          },
-          {
-            "context": "Test on macOS (Node 22.12.0)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Test on macOS (Node 24)",
-            "integration_id": 15368
-          },
-          {
-            "context": "Commit messages and PR title",
+            "context": "CI passed",
             "integration_id": 15368
           }
         ]

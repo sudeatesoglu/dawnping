@@ -1,4 +1,4 @@
-# ADR-0001: Ports and adapters with a compiler-enforced pure core
+# ADR-0001: Ports and adapters with a tool-enforced pure core
 
 - **Status:** Accepted
 - **Date:** 2026-11-15
@@ -24,8 +24,10 @@ src/
 ```
 
 - **`src/core` is pure.** It does no I/O and reads no ambient state. Time, configuration and log data are passed in, through ports such as `Clock`.
-- **The boundary is enforced by the compiler.** `src/core/tsconfig.json` loads no Node types and no DOM, and `pnpm typecheck` runs it before the project-wide check. Importing `node:fs` or using `process` or `console` in the core is a type error, not a review comment.
-- **Dependencies point inward.** Adapters and the CLI import from the core; the core never imports from them.
+- **The boundary is enforced by tools, not by review:**
+  - *Compiler:* `src/core/tsconfig.json` loads no Node types and no DOM, and `pnpm typecheck` runs it before the project-wide check. Importing `node:fs` or using `process` or `console` in the core is a type error.
+  - *Linter:* the standard library still offers ambient state, so a Biome plugin (`lint/no-ambient-state.grit`) rejects `Date.now()`, `new Date()` and `Math.random()` in `src/core`. `new Date(ms)` stays allowed, since it only converts a value it was given.
+- **Dependencies point inward.** Adapters and the CLI import from the core; the core never imports from them. A Biome `noRestrictedImports` rule rejects imports from `adapters/` or `cli/` inside `src/core`.
 - **One package.** The repository is a single npm package. The `core` / `adapters` / `cli` folders provide the boundary; a workspace with separate packages would add configuration without adding protection.
 
 ## Alternatives considered

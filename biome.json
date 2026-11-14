@@ -55,5 +55,28 @@
     "formatter": {
       "enabled": false
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/core/**"],
+      "plugins": ["./lint/no-ambient-state.grit"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/adapters/**", "**/cli/**", "**/cli.ts"],
+                    "message": "The core must not depend on adapters or the CLI (ADR-0001)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

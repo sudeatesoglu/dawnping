@@ -1,0 +1,24 @@
+
+# <type>(<scope>): <summary>
+#
+# Summary: imperative mood, no trailing period, max 72 chars.
+#   e.g. feat(planner): skip the morning ping on skipped dates
+#
+# Allowed types and scopes: see commitlint.config.ts (single source of truth).
+# Breaking change: add "!" after the scope, e.g. feat(api)!: ...
+#
+# --- Body (required, wrap at 72 chars) ---
+# Keep "Why:" and "What:" on their own lines. "Why: text" on one line
+# looks like a Git trailer (Key: value) and is parsed as a footer.
+#
+# Why:
+# <the problem or motivation behind this change>
+#
+# What:
+# - <notable change>
+# - <notable change>
+#
+# --- Footer ---
+# Closes #<issue>
+# Refs #<issue>
+# BREAKING CHANGE: <what breaks and how to migrate>

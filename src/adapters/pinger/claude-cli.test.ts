@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PING_PROMPT } from '../../core/pinger.ts';
+import { projectFolderName } from '../../core/session-logs.ts';
 import type { CommandOptions, CommandResult } from '../process.ts';
 import { createClaudePinger } from './claude-cli.ts';
 
@@ -46,7 +47,12 @@ function pinger(answer: CommandResult | Error) {
 describe('createClaudePinger', () => {
   it('runs claude -p from the fixed ping directory', async () => {
     const result = await pinger({ code: 0, stdout: 'ok\n', stderr: '' }).ping('haiku');
-    expect(result).toEqual({ ok: true, durationMs: 1_500 });
+    expect(result).toEqual({
+      ok: true,
+      durationMs: 1_500,
+      // Named after the real path: macOS temp folders live under /private.
+      logFolder: projectFolderName(await realpath(join(dir, 'ping'))),
+    });
     expect(calls).toEqual([
       {
         program: 'claude',

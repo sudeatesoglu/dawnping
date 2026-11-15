@@ -7,6 +7,8 @@ export interface Paths {
   stateDir: string;
   /** Where per-user launchd agents live on macOS. */
   launchAgentsDir: string;
+  /** Claude Code's session logs, one folder per project. */
+  claudeProjectsDir: string;
 }
 
 /**
@@ -29,5 +31,6 @@ export function resolvePaths(
     configFile: join(base('XDG_CONFIG_HOME', '.config'), 'dawnping', 'config.json'),
     stateDir: join(base('XDG_STATE_HOME', '.local/state'), 'dawnping'),
     launchAgentsDir: join(home, 'Library', 'LaunchAgents'),
+    claudeProjectsDir: join(base('CLAUDE_CONFIG_DIR', '.claude'), 'projects'),
   };
 }

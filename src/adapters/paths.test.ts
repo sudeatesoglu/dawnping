@@ -7,6 +7,7 @@ describe('resolvePaths', () => {
       configFile: '/home/u/.config/dawnping/config.json',
       stateDir: '/home/u/.local/state/dawnping',
       launchAgentsDir: '/home/u/Library/LaunchAgents',
+      claudeProjectsDir: '/home/u/.claude/projects',
     });
   });
 
@@ -15,7 +16,14 @@ describe('resolvePaths', () => {
       configFile: '/cfg/dawnping/config.json',
       stateDir: '/state/dawnping',
       launchAgentsDir: '/home/u/Library/LaunchAgents',
+      claudeProjectsDir: '/home/u/.claude/projects',
     });
+  });
+
+  it('honors an absolute CLAUDE_CONFIG_DIR for the session logs', () => {
+    expect(resolvePaths({ CLAUDE_CONFIG_DIR: '/claude' }, '/home/u').claudeProjectsDir).toBe(
+      '/claude/projects',
+    );
   });
 
   it('ignores relative XDG variables, as the spec requires', () => {
@@ -23,6 +31,7 @@ describe('resolvePaths', () => {
       configFile: '/home/u/.config/dawnping/config.json',
       stateDir: '/home/u/.local/state/dawnping',
       launchAgentsDir: '/home/u/Library/LaunchAgents',
+      claudeProjectsDir: '/home/u/.claude/projects',
     });
   });
 });

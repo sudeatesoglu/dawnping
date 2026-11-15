@@ -1,5 +1,6 @@
-import { chmod, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, realpath } from 'node:fs/promises';
 import { PING_PROMPT, type Pinger, type PingResult } from '../../core/pinger.ts';
+import { projectFolderName } from '../../core/session-logs.ts';
 import type { CommandRunner } from '../process.ts';
 
 export interface ClaudePingerOptions {
@@ -57,10 +58,13 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
     describe: (model) => ({ command: ['claude', ...args(model)], directory: options.directory }),
 
     async ping(model): Promise<PingResult> {
+      let logFolder: string;
       try {
         await mkdir(options.directory, { recursive: true, mode: 0o700 });
         // mkdir only sets the mode on a folder it creates.
         await chmod(options.directory, 0o700);
+        // claude names the log folder after the real path (/tmp is /private/tmp).
+        logFolder = projectFolderName(await realpath(options.directory));
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         return { ok: false, failure: 'failed', detail: `cannot use the ping folder: ${reason}` };
@@ -93,7 +97,7 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
             firstLine(result.stderr) || firstLine(result.stdout) || `exit code ${result.code}`,
         };
       }
-      return { ok: true, durationMs: now() - started };
+      return { ok: true, durationMs: now() - started, logFolder };
     },
   };
 }

@@ -20,6 +20,13 @@ export function parseWorkRange(value: string): { start: number; end: number } | 
   return { start, end };
 }
 
+/** Minutes after midnight → "07:05". */
+export function formatTime(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 /** True for a real calendar date in the form YYYY-MM-DD (rejects 2026-02-30). */
 export function isIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

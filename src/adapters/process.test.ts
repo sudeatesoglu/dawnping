@@ -26,6 +26,27 @@ describe('runCommand', () => {
     });
   });
 
+  it('closes stdin, so programs that read it do not wait forever', async () => {
+    expect(await runCommand('cat', [], { timeoutMs: 2_000 })).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
+  });
+
+  it('kills a program that ignores SIGTERM after a grace period', async () => {
+    const result = await runCommand('sh', ['-c', 'trap "" TERM; exec sleep 10'], {
+      timeoutMs: 50,
+    });
+    expect(result).toMatchObject({ code: -1, timedOut: true });
+  }, 5_000);
+
+  it('passes the given environment', async () => {
+    expect((await runCommand('sh', ['-c', 'echo "$ONLY"'], { env: { ONLY: 'this' } })).stdout).toBe(
+      'this\n',
+    );
+  });
+
   it('reports a program stopped by a signal without a timeout', async () => {
     expect(await runCommand('sh', ['-c', 'kill -TERM $$'])).toMatchObject({
       code: -1,

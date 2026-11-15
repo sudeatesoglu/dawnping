@@ -10,16 +10,16 @@ Start your Claude Code usage window at the right time, so its resets land inside
 
 Claude Code subscriptions have a 5-hour usage window that starts with your first message. If you start working at 10:00, the window resets at 15:00, and a workday that ends at 18:00 only ever sees two windows.
 
-If the window had started at 07:00, it would reset at 12:00 and again at 17:00, so the same workday sees three fresh windows. dawnping sends one tiny message before you start work to make that happen.
+If the window had started at 06:30, it would reset at 11:30 and 16:30, and your day's work would be split differently across the windows. dawnping sends one tiny message before you start work to make that happen. What matters is not the number of windows but how your work is split across them, so that you can do as much as possible before hitting a limit ([ADR-0005](docs/adr/0005-minimize-squared-window-loads.md)).
 
-Several tools already do this with a fixed schedule. dawnping's goal is to decide *when* from your own data:
+Several tools already ping on a fixed schedule. dawnping decides *when*:
 
-- **Learns your pattern** from Claude Code's local session logs and suggests the best trigger time
-- **Simulates** past days: "with a 06:30 trigger you would have waited 1.5 h instead of 6 h"
-- **Keeps the window chain going** during work hours (for example over a lunch break)
-- **Verifies** that the ping actually started a window and notifies you if it didn't
-- **Profiles per weekday**, skip dates and optional calendar awareness, all managed from the CLI
-- **Status line** for Claude Code showing the next reset
+- **Plans the ping time** from your working hours, busy stretches and breaks; `dawnping plan` explains every choice
+- **Skips the ping** when a usage window is already running
+- **Verifies** that the ping landed in Claude Code's session log and notifies you if it didn't
+- **Profiles per weekday** and skip dates, all managed from the CLI
+
+Planned: learning your pattern from the session logs, keeping the window chain going over breaks, a Claude Code status line and calendar awareness.
 
 ## Caveats
 

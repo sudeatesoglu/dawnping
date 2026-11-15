@@ -21,7 +21,9 @@ describe('optimizeTrigger', () => {
     ['12:00-17:00', [], '09:30: 2.5 + 2.5'],
     ['12:00-17:00', [{ range: '15:00-17:00' }], '10:15: 3.5 + 3.5'],
     ['10:00-15:00', [], '07:30: 2.5 + 2.5'],
-    // A busy morning stays in the first window, with an even split after it.
+    // A busy morning: the first reset (11:30) splits the busy block, 1.5 h of
+    // it in the first window and 0.5 h in the second; 06:45 would give a
+    // higher sum of squares.
     ['10:00-18:00', [{ range: '10:00-12:00', weight: 3 }], '06:30: 4.5 + 6 + 1.5'],
     // A busy afternoon (#28): the first window gets 40 minutes of real work,
     // and the busy stretch is split between the second and the third.
@@ -83,6 +85,17 @@ describe('comparePlans', () => {
     expect(two.windows).toHaveLength(2);
     expect(one.windows).toHaveLength(1);
     expect(comparePlans(two, one)).toBeLessThan(0);
+  });
+
+  it('breaks a tie in squared loads with the lighter busiest window', () => {
+    const plan = (trigger: number, loads: number[]) => ({
+      trigger,
+      windows: loads.map((load) => ({ start: trigger, end: trigger + 60, activeSlots: 1, load })),
+    });
+    // 3² + 4² = 25 = 5²: equal sums of squares, busiest windows 4 and 5.
+    expect(comparePlans(plan(1, [3, 4]), plan(2, [5]))).toBeLessThan(0);
+    // Equal on both: the later ping wins.
+    expect(comparePlans(plan(1, [3, 4]), plan(2, [4, 3]))).toBeGreaterThan(0);
   });
 
   it('gives a five-minute sliver window almost no credit', () => {

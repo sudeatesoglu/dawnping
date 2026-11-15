@@ -10,7 +10,7 @@ const IST = 'Europe/Istanbul';
 const config: Config = {
   version: 1,
   ping: { model: 'haiku' },
-  // auto → 06:30 for 10:00-18:00 (ADR-0004).
+  // auto → 06:30 for 10:00-18:00 (ADR-0005).
   profiles: {
     default: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], work: '10:00-18:00', trigger: 'auto' },
   },

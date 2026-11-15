@@ -16,7 +16,7 @@ We will rank plans by the **work the user can do before hitting a window's limit
 
 **Usable work.** A window with load ℓ (hours × weight) and budget B gives `min(ℓ, B)`: all of the work if it fits, the budget if it does not. A day gives `Σ min(ℓᵢ, B)`.
 
-**Unknown budget.** B is not published and differs by plan, and the best plan depends on it. For the day above, 05:45 beats 05:05 if B = 3 (6.75 against 6.08), and loses if B = 5 (9.25 against 9.91). So we average over every B from 0 to M, where M is at least the largest load:
+**Unknown budget.** B is not published and differs by plan, and the best plan depends on it. For the day above, 05:45 beats 05:05 if B = 3 (6.75 against 6.08), and loses if B = 5 (9.25 against 9.92). So we average over every B from 0 to M. M is one fixed bound, the same for every candidate plan, and at least as large as any of their loads (the day's total load works):
 
 ```
 average of min(ℓ, B) for B in [0, M]
@@ -26,7 +26,7 @@ average of min(ℓ, B) for B in [0, M]
 Σ over the windows  =  Σ ℓᵢ  −  Σ ℓᵢ² / (2M)
 ```
 
-`Σ ℓᵢ` is the day's total work, which the ping time does not change. So **maximizing the average usable work is the same as minimizing Σ ℓᵢ²**, whatever M is.
+`Σ ℓᵢ` is the day's total work, which the ping time does not change. Since M is the same for all plans, **maximizing the average usable work is the same as minimizing Σ ℓᵢ²**, whichever bound M is chosen.
 
 Plans are compared by:
 

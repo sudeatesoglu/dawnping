@@ -75,11 +75,12 @@ export function comparePlans(a: Plan, b: Plan): number {
 }
 
 /**
- * Loads are sums of fractional weights, so equal loads can differ by a
- * rounding error; those must count as a tie, not decide the plan.
+ * Loads are sums of fractional weights, so equal values can differ by a
+ * rounding error; those must count as a tie, not decide the plan. The
+ * tolerance is relative, because sums of squares grow large.
  */
 function compareLoads(a: number, b: number): number {
-  return Math.abs(a - b) < 1e-9 ? 0 : a - b;
+  return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b)) ? 0 : a - b;
 }
 
 /**

@@ -1,32 +1,30 @@
-import {
-  type ParseResult,
-  parseConfig,
-  parseConfigText,
-  serializeConfig,
-} from '../core/config/parse.ts';
-import { type Config, DEFAULT_CONFIG } from '../core/config/schema.ts';
+import { parseConfig, parseConfigText, serializeConfig } from '../core/config/parse.ts';
+import { type Config, type ConfigInput, defaultConfigInput } from '../core/config/schema.ts';
 import { readTextFile, writeFileAtomic } from './file-store.ts';
 
 export type LoadResult =
-  | (ParseResult & { ok: true; source: 'file' | 'defaults' })
-  | (ParseResult & { ok: false });
+  | { ok: true; config: Config; input: ConfigInput; source: 'file' | 'defaults' }
+  | { ok: false; errors: string[] };
 
 /** Loads the config file; a missing file means the defaults. */
 export async function loadConfig(file: string): Promise<LoadResult> {
   const text = await readTextFile(file);
-  if (text === undefined) return { ok: true, config: DEFAULT_CONFIG, source: 'defaults' };
-  const result = parseConfigText(text);
-  return result.ok ? { ...result, source: 'file' } : result;
+  const source = text === undefined ? 'defaults' : 'file';
+  // A fresh default object per load, so a caller that edits it cannot
+  // change the defaults for the rest of the process.
+  const result = text === undefined ? parseConfig(defaultConfigInput()) : parseConfigText(text);
+  return result.ok ? { ...result, source } : result;
 }
 
 /**
- * Validates and writes the config atomically. An invalid config is never
- * written, even if a caller forgot to validate it first.
+ * Validates and writes the config as given (no defaults added, key order
+ * kept). An invalid config is never written, even if a caller forgot to
+ * validate it first.
  */
-export async function saveConfig(file: string, config: Config): Promise<void> {
-  const result = parseConfig(config);
+export async function saveConfig(file: string, input: ConfigInput): Promise<void> {
+  const result = parseConfig(input);
   if (!result.ok) {
     throw new Error(`Refusing to save an invalid config:\n${result.errors.join('\n')}`);
   }
-  await writeFileAtomic(file, serializeConfig(result.config));
+  await writeFileAtomic(file, serializeConfig(input));
 }

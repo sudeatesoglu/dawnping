@@ -17,7 +17,8 @@ Users are expected to change settings mainly through CLI commands (`dawnping con
 - The schema (zod) is the single source of truth: it validates, applies defaults, and produces one error line per problem that names the key, e.g. `profiles.default.work: must be a range like 09:00-18:00 that ends after it starts`.
 - Unknown keys are rejected, so a typo such as `timezon` is reported instead of silently ignored.
 - Each weekday belongs to at most one profile. A weekday no profile covers is a rest day: no ping.
-- Writes are atomic (temporary file, flush, rename), and an invalid config is never written.
+- The CLI edits the file as written: defaults are applied when reading, never written back, and key order is kept. A default that changes in a later release therefore reaches users who never set that key.
+- Writes are atomic (temporary file, flush, rename, flush the directory), go through symlinks instead of replacing them, and an invalid config is never written.
 
 **Locations: XDG Base Directory spec.**
 
@@ -38,5 +39,6 @@ Relative values of the variables are ignored, as the spec requires. Files are cr
 
 - No comments in the config file. Help lives in the CLI (`dawnping config --help`) and in error messages.
 - Round trips are lossless: what the CLI writes is exactly what it read, plus the change.
+- Writes are not locked against each other. Only the user's own CLI commands write the config (the scheduled job only reads it), so concurrent writes are not expected.
 - A JSON Schema for editor autocompletion can be generated from the same zod schema later (the `$schema` key is already allowed).
 - New settings (for example retrigger and window anchor options) are added as optional keys with defaults, so older files stay valid without a version bump.

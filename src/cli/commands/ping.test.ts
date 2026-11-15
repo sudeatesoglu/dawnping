@@ -22,7 +22,9 @@ describe('ping', () => {
     // The test clock is 09:00 in Istanbul, so the window resets at 14:00.
     expect(await t.run('ping')).toEqual({
       code: 0,
-      stdout: 'Pinged sonnet in 2.1s. Your 5-hour window has started. It resets around 14:00.\n',
+      stdout:
+        'Pinged sonnet in 2.1s.\n' +
+        'If no usage window was active, one started now, resetting around 14:00.\n',
       stderr: '',
     });
     expect(pinger.pinged).toEqual(['sonnet']);
@@ -70,7 +72,7 @@ describe('ping', () => {
   it('leaves out the reset time when no time zone is usable', async () => {
     const t = await context({ systemTimeZone: 'Etc/Unknown' });
     expect((await t.run('ping')).stdout).toBe(
-      'Pinged haiku in 2.1s. Your 5-hour window has started.\n',
+      'Pinged haiku in 2.1s.\nIf no usage window was active, one started now.\n',
     );
   });
 });

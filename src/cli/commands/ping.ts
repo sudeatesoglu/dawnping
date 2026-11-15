@@ -38,12 +38,17 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
         throw new CliError(`Ping failed: ${result.detail}.`, HINTS[result.failure]);
       }
 
+      // The ping starts a window only if none was active, and this command
+      // cannot tell yet; the planner checks the session logs for that.
       const seconds = (result.durationMs / 1000).toFixed(1);
       const timeZone = effectiveTimeZone(config, ctx.systemTimeZone);
       const reset =
         timeZone === undefined
           ? ''
-          : ` It resets around ${formatTime(toLocalTime(ctx.clock.now() + WINDOW_MS, timeZone).minutes)}.`;
-      ctx.stdout(`Pinged ${model} in ${seconds}s. Your 5-hour window has started.${reset}\n`);
+          : `, resetting around ${formatTime(toLocalTime(ctx.clock.now() + WINDOW_MS, timeZone).minutes)}`;
+      ctx.stdout(
+        `Pinged ${model} in ${seconds}s.\n` +
+          `If no usage window was active, one started now${reset}.\n`,
+      );
     });
 }

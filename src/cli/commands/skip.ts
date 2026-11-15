@@ -1,39 +1,21 @@
 import type { Command } from 'commander';
-import { effectiveTimeZone, profileFor } from '../../core/config/resolve.ts';
+import { profileFor } from '../../core/config/resolve.ts';
 import type { Config, ConfigInput } from '../../core/config/schema.ts';
 import {
   dateRange,
   MAX_SKIP_RANGE_DAYS,
   rangeLength,
-  resolveDateArg,
   withoutSkip,
   withSkips,
 } from '../../core/skip.ts';
-import { toLocalTime, weekdayOf } from '../../core/time.ts';
+import { weekdayOf } from '../../core/time.ts';
 import { loadOrFail, validateAndSave } from '../config-file.ts';
 import { type CliContext, CliError } from '../context.ts';
+import { dateOrFail as dateOrFailIn, todayOrFail } from '../day.ts';
 
 const DATE_HELP = 'today, tomorrow or YYYY-MM-DD';
 
-/** Today's date in the user's time zone. */
-function todayOrFail(config: Config, ctx: CliContext): string {
-  const timeZone = effectiveTimeZone(config, ctx.systemTimeZone);
-  if (timeZone === undefined) {
-    throw new CliError(
-      `The system time zone "${ctx.systemTimeZone}" is not an IANA zone like Europe/Istanbul.`,
-      'Set yours with: dawnping config set timezone <zone>',
-    );
-  }
-  return toLocalTime(ctx.clock.now(), timeZone).date;
-}
-
-function dateOrFail(arg: string, today: string): string {
-  const date = resolveDateArg(arg, today);
-  if (date === undefined) {
-    throw new CliError(`Not a date: ${JSON.stringify(arg)} (use ${DATE_HELP})`);
-  }
-  return date;
-}
+const dateOrFail = (arg: string, today: string) => dateOrFailIn(arg, today, DATE_HELP);
 
 /** "2026-11-20 (Fri)" or "2026-11-21 (Sat, already a rest day)". */
 function describe(config: Config, date: string): string {

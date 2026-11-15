@@ -90,7 +90,7 @@ describe('config set', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toBe(
       'Not saved, the change would make the config invalid:\n' +
-        '  profiles.default.work: must be a range like 09:00-18:00 that ends after it starts\n',
+        '  profiles.default.work: must be a range like 09:00-18:00 in 5-minute steps that ends after it starts\n',
     );
     expect(await readTextFile(t.ctx.paths.configFile)).toBeUndefined();
   });

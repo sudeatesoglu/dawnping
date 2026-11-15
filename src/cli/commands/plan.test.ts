@@ -56,9 +56,35 @@ describe('plan', () => {
     expect((await t.run('plan', 'mon')).stdout).toContain('1 fresh window during');
   });
 
+  it('accepts full and short weekday names only', async () => {
+    expect((await t.run('plan', 'Monday')).stdout).toContain('mon: profile');
+    expect((await t.run('plan', 'month')).code).toBe(1);
+  });
+
+  it('says when a fixed ping has no effect', async () => {
+    await t.run('config', 'set', 'profiles.default.trigger', '13:00');
+    expect((await t.run('plan', 'mon')).stdout).toContain(
+      '  This ping has no effect: it is after work starts, so the first window starts with your work at 12:00.\n',
+    );
+    await t.run('config', 'set', 'profiles.default.trigger', '06:00');
+    expect((await t.run('plan', 'mon')).stdout).toContain('it is more than 5 hours before work');
+  });
+
+  it('starts the next window after a break', async () => {
+    await t.run('config', 'set', 'profiles.default.work', '08:00-18:00');
+    await t.run('profile', 'busy', 'add', 'default', '12:00-14:00', '--weight', '0');
+    await t.run('config', 'set', 'profiles.default.trigger', '08:00');
+    const { stdout } = await t.run('plan', 'mon');
+    expect(stdout).toContain('work 08:00-18:00, break 12:00-14:00\n');
+    // The window that resets during lunch (13:00) is followed by one that
+    // starts when work resumes at 14:00.
+    expect(stdout).toContain('  08:00-13:00 ');
+    expect(stdout).toContain('  14:00-19:00 ');
+  });
+
   it('rejects something that is not a day', async () => {
     expect((await t.run('plan', 'someday')).stderr).toBe(
-      'Not a day: "someday" (use today, tomorrow, a weekday (mon..sun) or YYYY-MM-DD)\n',
+      'Not a date: "someday" (use today, tomorrow, a weekday (mon..sun) or YYYY-MM-DD)\n',
     );
   });
 });

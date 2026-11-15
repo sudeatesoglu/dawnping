@@ -158,7 +158,7 @@ describe('profile busy', () => {
     await t.run('profile', 'busy', 'add', 'default', '14:00-17:00');
     expect(
       (await t.run('profile', 'busy', 'add', 'default', '14:00-17:00', '--weight', '3')).stdout,
-    ).toBe('Busy 14:00-17:00 ×3 in profile "default"\n');
+    ).toBe('Added busy 14:00-17:00 ×3 to profile "default"\n');
     expect((await savedProfiles()).default.busy).toEqual([{ range: '14:00-17:00', weight: 3 }]);
     expect((await t.run('profile', 'list')).stdout).toContain('         busy 14:00-17:00 ×3\n');
 
@@ -174,8 +174,8 @@ describe('profile busy', () => {
       (await t.run('profile', 'busy', 'add', 'default', '10:00-11:00', '--weight', 'lots')).stderr,
     ).toBe('--weight must be a number, not "lots".\n');
     expect(
-      (await t.run('profile', 'busy', 'add', 'default', '10:00-11:00', '--weight', '0')).stderr,
-    ).toContain('weight: must be greater than 0');
+      (await t.run('profile', 'busy', 'add', 'default', '10:00-11:00', '--weight', '-1')).stderr,
+    ).toContain('weight: must be 0 (a break) or more');
   });
 
   it('reports unknown profiles and ranges', async () => {

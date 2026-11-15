@@ -1,9 +1,10 @@
 import type { Command } from 'commander';
 import { splitList } from '../../core/config/keypath.ts';
-import type { Profile } from '../../core/config/schema.ts';
+import type { ConfigInput, Profile } from '../../core/config/schema.ts';
 import { WEEKDAYS, type Weekday } from '../../core/time.ts';
 import { loadOrFail, validateAndSave } from '../config-file.ts';
 import { type CliContext, CliError } from '../context.ts';
+import { describeBusy } from './plan.ts';
 
 /** Weekdays from --days, case-insensitive ("Fri" works). */
 function parseDays(value: string): string[] {
@@ -33,10 +34,7 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
         ctx.stdout(
           `${name.padEnd(width)}  ${p.days.join(',').padEnd(27)}  ${p.work}  trigger ${p.trigger}\n`,
         );
-        for (const b of p.busy ?? []) {
-          const weight = b.weight === undefined ? '' : ` ×${b.weight}`;
-          ctx.stdout(`${''.padEnd(width)}  busy ${b.range}${weight}\n`);
-        }
+        for (const b of p.busy ?? []) ctx.stdout(`${''.padEnd(width)}  ${describeBusy(b)}\n`);
       }
       const covered = new Set(entries.flatMap(([, p]) => p.days));
       const rest = WEEKDAYS.filter((day) => !covered.has(day));
@@ -85,7 +83,7 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
     .description('remove a profile; its days become rest days')
     .action(async (name: string) => {
       const { input } = await loadOrFail(ctx);
-      if (!Object.hasOwn(input.profiles, name)) throw new CliError(`No profile named "${name}".`);
+      profileOrFail(input, name);
       const { [name]: _removed, ...profiles } = input.profiles;
       await validateAndSave(ctx, { ...input, profiles });
       ctx.stdout(`Removed profile "${name}"\n`);
@@ -101,10 +99,7 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
     .option('--weight <n>', 'activity relative to an ordinary working stretch (1), e.g. 3')
     .action(async (name: string, range: string, options: { weight?: string }) => {
       const { input } = await loadOrFail(ctx);
-      const target = input.profiles[name];
-      if (!Object.hasOwn(input.profiles, name) || target === undefined) {
-        throw new CliError(`No profile named "${name}".`);
-      }
+      const target = profileOrFail(input, name);
       const weight = options.weight === undefined ? undefined : Number(options.weight);
       if (weight !== undefined && !Number.isFinite(weight)) {
         throw new CliError(`--weight must be a number, not ${JSON.stringify(options.weight)}.`);
@@ -116,9 +111,7 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
         ...input,
         profiles: { ...input.profiles, [name]: { ...target, busy: [...others, entry] } },
       });
-      ctx.stdout(
-        `Busy ${range}${weight === undefined ? '' : ` ×${weight}`} in profile "${name}"\n`,
-      );
+      ctx.stdout(`Added ${describeBusy(entry)} to profile "${name}"\n`);
     });
 
   busy
@@ -126,10 +119,7 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
     .description('remove a busy range')
     .action(async (name: string, range: string) => {
       const { input } = await loadOrFail(ctx);
-      const target = input.profiles[name];
-      if (!Object.hasOwn(input.profiles, name) || target === undefined) {
-        throw new CliError(`No profile named "${name}".`);
-      }
+      const target = profileOrFail(input, name);
       const remaining = (target.busy ?? []).filter((b) => b.range !== range);
       if (remaining.length === (target.busy ?? []).length) {
         throw new CliError(`Profile "${name}" has no busy range ${range}.`);
@@ -142,6 +132,13 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
       });
       ctx.stdout(`Removed busy ${range} from profile "${name}"\n`);
     });
+}
+
+/** The named profile as written in the file, or a CliError. */
+function profileOrFail(input: ConfigInput, name: string) {
+  const profile = Object.hasOwn(input.profiles, name) ? input.profiles[name] : undefined;
+  if (profile === undefined) throw new CliError(`No profile named "${name}".`);
+  return profile;
 }
 
 type Profiles = Record<string, { days: string[] } & Record<string, unknown>>;

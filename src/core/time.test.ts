@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatTime,
   isIsoDate,
   isValidTimeZone,
   parseTime,
@@ -60,6 +61,17 @@ describe('isValidTimeZone', () => {
   // Offsets and abbreviations have no daylight saving rules.
   it.each(['Mars/Olympus', '+03:00', 'EST', 'europe/istanbul', ''])('rejects %j', (value) => {
     expect(isValidTimeZone(value)).toBe(false);
+  });
+});
+
+describe('formatTime', () => {
+  it.each([
+    [0, '00:00'],
+    [425, '07:05'],
+    [1439, '23:59'],
+    [1440, '00:00'],
+  ])('%i → %s', (minutes, text) => {
+    expect(formatTime(minutes)).toBe(text);
   });
 });
 

@@ -32,7 +32,7 @@ describe('parseConfig', () => {
       profiles: { default: { days: ['mon'], work: '25:00-18:00', trigger: 'auto' } },
     };
     expect(errorsOf(config)).toEqual([
-      'profiles.default.work: must be a range like 09:00-18:00 that ends after it starts',
+      'profiles.default.work: must be a range like 09:00-18:00 in 5-minute steps that ends after it starts',
     ]);
   });
 
@@ -45,7 +45,7 @@ describe('parseConfig', () => {
     expect(errorsOf(config)).toEqual([
       'timezone: must be an IANA time zone like Europe/Istanbul',
       'profiles.default.days.0: must be one of mon, tue, wed, thu, fri, sat, sun',
-      'profiles.default.trigger: must be "auto" or a time like 06:30',
+      'profiles.default.trigger: must be "auto" or a time in 5-minute steps like 06:30',
     ]);
   });
 
@@ -99,6 +99,35 @@ describe('parseConfig', () => {
       ok: false,
       errors: ['profiles.__proto__: "__proto__" is not allowed as a key'],
     });
+  });
+
+  it('requires 5-minute steps for times the planner uses', () => {
+    const config = {
+      version: 1,
+      profiles: { default: { days: ['mon'], work: '09:07-18:00', trigger: '06:33' } },
+    };
+    expect(errorsOf(config)).toEqual([
+      'profiles.default.work: must be a range like 09:00-18:00 in 5-minute steps that ends after it starts',
+      'profiles.default.trigger: must be "auto" or a time in 5-minute steps like 06:30',
+    ]);
+  });
+
+  it('validates busy ranges: inside work, no overlaps, some working time left', () => {
+    const profile = (busy: unknown) => ({
+      version: 1,
+      profiles: { default: { days: ['mon'], work: '09:00-12:00', trigger: 'auto', busy } },
+    });
+    expect(errorsOf(profile([{ range: '08:00-10:00' }]))).toEqual([
+      'profiles.default.busy.0.range: must lie inside the working hours 09:00-12:00',
+    ]);
+    expect(
+      errorsOf(profile([{ range: '09:00-10:30', weight: 3 }, { range: '10:00-11:00' }])),
+    ).toEqual(['profiles.default.busy.1.range: overlaps 09:00-10:30']);
+    expect(errorsOf(profile([{ range: '09:00-12:00', weight: 0 }]))).toEqual([
+      'profiles.default.busy: leaves no working time',
+    ]);
+    // A break (weight 0) inside the day is fine.
+    expect(parseConfig(profile([{ range: '10:00-11:00', weight: 0 }])).ok).toBe(true);
   });
 
   it('validates skip dates', () => {

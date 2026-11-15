@@ -10,9 +10,19 @@ import {
 
 const WeekdaySchema = z.enum(WEEKDAYS, { error: `must be one of ${WEEKDAYS.join(', ')}` });
 
-const WorkRange = z.string().refine((value) => parseWorkRange(value) !== undefined, {
-  error: 'must be a range like 09:00-18:00 that ends after it starts',
-});
+/**
+ * Planning works in 5-minute slots, so times that feed it use 5-minute
+ * steps; anything else would be rounded and plans would be off by minutes.
+ */
+const onStep = (minutes: number) => minutes % 5 === 0;
+
+const WorkRange = z.string().refine(
+  (value) => {
+    const range = parseWorkRange(value);
+    return range !== undefined && onStep(range.start) && onStep(range.end);
+  },
+  { error: 'must be a range like 09:00-18:00 in 5-minute steps that ends after it starts' },
+);
 
 const IsoDate = z.string().refine(isIsoDate, { error: 'must be a calendar date like 2026-12-31' });
 
@@ -24,15 +34,77 @@ const ProfileName = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, {
   error: 'name must start with a letter and use only a-z, 0-9 and "-" (max 32)',
 });
 
-export const Profile = z.strictObject({
-  days: z.array(WeekdaySchema).min(1, { error: 'must list at least one day' }),
-  work: WorkRange,
-  /** "auto" lets dawnping choose; a fixed time like "06:30" overrides it. */
-  // One refinement instead of a union, so the error names both options.
-  trigger: z.string().refine((value) => value === 'auto' || parseTime(value) !== undefined, {
-    error: 'must be "auto" or a time like 06:30',
-  }),
+/** A stretch of the working day with more (or less) activity than usual. */
+const BusyRange = z.strictObject({
+  range: WorkRange,
+  /**
+   * Activity relative to an ordinary working stretch (1); 0 is a break.
+   * Omitted: learned from the session logs once that exists, else a default.
+   */
+  weight: z.number().min(0, { error: 'must be 0 (a break) or more' }).max(10).optional(),
 });
+
+export const Profile = z
+  .strictObject({
+    days: z.array(WeekdaySchema).min(1, { error: 'must list at least one day' }),
+    work: WorkRange,
+    /** "auto" lets dawnping choose; a fixed time like "06:30" overrides it. */
+    // One refinement instead of a union, so the error names both options.
+    trigger: z.string().refine(
+      (value) => {
+        const minutes = parseTime(value);
+        return value === 'auto' || (minutes !== undefined && onStep(minutes));
+      },
+      { error: 'must be "auto" or a time in 5-minute steps like 06:30' },
+    ),
+    busy: z.array(BusyRange).optional(),
+  })
+  .superRefine((profile, ctx) => {
+    // Busy ranges describe parts of the working day; outside it they would
+    // silently extend it. May run with invalid fields, so parse defensively.
+    const work = parseWorkRange(profile.work);
+    if (work === undefined) return;
+    const ranges: { index: number; text: string; start: number; end: number; weight?: number }[] =
+      [];
+    (profile.busy ?? []).forEach((busy, index) => {
+      const range = parseWorkRange(busy.range);
+      if (range === undefined) return;
+      if (range.start < work.start || range.end > work.end) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['busy', index, 'range'],
+          message: `must lie inside the working hours ${profile.work}`,
+        });
+      }
+      ranges.push({
+        index,
+        text: busy.range,
+        ...range,
+        ...(busy.weight === undefined ? {} : { weight: busy.weight }),
+      });
+    });
+
+    // Overlaps would make the weight depend on the order of the list.
+    ranges.sort((a, b) => a.start - b.start);
+    ranges.forEach((range, i) => {
+      const previous = ranges[i - 1];
+      if (previous !== undefined && range.start < previous.end) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['busy', range.index, 'range'],
+          message: `overlaps ${previous.text}`,
+        });
+      }
+    });
+
+    // Breaks (weight 0) must leave some working time to plan for.
+    const breaks = ranges
+      .filter((range) => range.weight === 0)
+      .reduce((sum, range) => sum + range.end - range.start, 0);
+    if (breaks >= work.end - work.start) {
+      ctx.addIssue({ code: 'custom', path: ['busy'], message: 'leaves no working time' });
+    }
+  });
 export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PING_MODEL = 'haiku';

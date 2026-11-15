@@ -1,6 +1,6 @@
 # ADR-0004: Optimize the trigger time over a demand profile
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0005](0005-minimize-squared-window-loads.md) (the objective; the demand profile, simulation and search still apply)
 - **Date:** 2026-11-15
 
 ## Context

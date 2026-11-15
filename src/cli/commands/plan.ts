@@ -88,6 +88,8 @@ export function registerPlanCommand(program: Command, ctx: CliContext): void {
       }
       ctx.stdout(windowLines(plan));
       const count = plan.windows.length;
-      ctx.stdout(`${count} fresh window${count === 1 ? '' : 's'} during your working hours.\n`);
+      // Facts only: the plan is chosen for the most usable work (ADR-0005),
+      // not for the number of windows.
+      ctx.stdout(`Your working hours span ${count} window${count === 1 ? '' : 's'}.\n`);
     });
 }

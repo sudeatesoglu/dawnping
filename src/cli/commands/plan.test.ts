@@ -21,7 +21,7 @@ describe('plan', () => {
         'Ping at 09:30 (chosen automatically)',
         "  09:30-14:30  2.5h  of work   50% of the day's load",
         "  14:30-19:30  2.5h  of work   50% of the day's load",
-        '2 fresh windows during your working hours.',
+        'Your working hours span 2 windows.',
         '',
       ].join('\n'),
     );
@@ -51,9 +51,9 @@ describe('plan', () => {
 
   it('says when one window is all there is', async () => {
     await t.run('config', 'set', 'profiles.default.work', '09:00-09:30');
-    expect((await t.run('plan', 'mon')).stdout).toContain('2 fresh windows');
+    expect((await t.run('plan', 'mon')).stdout).toContain('span 2 windows');
     await t.run('config', 'set', 'profiles.default.trigger', '09:00');
-    expect((await t.run('plan', 'mon')).stdout).toContain('1 fresh window during');
+    expect((await t.run('plan', 'mon')).stdout).toContain('span 1 window.');
   });
 
   it('accepts full and short weekday names only', async () => {

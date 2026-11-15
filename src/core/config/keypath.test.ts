@@ -6,6 +6,7 @@ import {
   getAt,
   parseKeyPath,
   setAt,
+  splitList,
   unsetAt,
 } from './keypath.ts';
 
@@ -14,8 +15,12 @@ describe('parseKeyPath', () => {
     expect(parseKeyPath('profiles.default.work')).toEqual(['profiles', 'default', 'work']);
   });
 
-  it.each(['', 'a..b', '.a', '__proto__', 'a.constructor', 'prototype.x'])('rejects %j', (key) => {
+  it.each(['', 'a..b', '.a', '__proto__', 'profiles.__proto__.x'])('rejects %j', (key) => {
     expect(parseKeyPath(key)).toBeUndefined();
+  });
+
+  it('allows names that are only dangerous as assignments, like constructor', () => {
+    expect(parseKeyPath('profiles.constructor.work')).toEqual(['profiles', 'constructor', 'work']);
   });
 });
 
@@ -43,8 +48,10 @@ describe('getAt / setAt / unsetAt', () => {
     expect(unsetAt(root, ['c'])).toEqual({ a: root.a });
   });
 
-  it('removes objects left empty', () => {
-    expect(unsetAt({ ping: { model: 'x' }, v: 1 }, ['ping', 'model'])).toEqual({ v: 1 });
+  it('keeps objects left empty unless asked to prune them', () => {
+    const root = { ping: { model: 'x' }, v: 1 };
+    expect(unsetAt(root, ['ping', 'model'])).toEqual({ ping: {}, v: 1 });
+    expect(unsetAt(root, ['ping', 'model'], { pruneEmpty: true })).toEqual({ v: 1 });
   });
 
   it('reports a missing value when removing', () => {
@@ -58,15 +65,23 @@ describe('getAt / setAt / unsetAt', () => {
   });
 });
 
+describe('splitList', () => {
+  it('trims, drops empty items and duplicates', () => {
+    expect(splitList(' fri, fri ,,sat')).toEqual(['fri', 'sat']);
+    expect(splitList('')).toEqual([]);
+  });
+});
+
 describe('coerceValue', () => {
-  it('follows the type of the current value', () => {
-    expect(coerceValue('a, b,,c', ['x'])).toEqual(['a', 'b', 'c']);
-    expect(coerceValue('', [])).toEqual([]);
-    expect(coerceValue('2', 1)).toBe(2);
-    expect(coerceValue('two', 1)).toBe('two');
-    expect(coerceValue('false', true)).toBe(false);
-    expect(coerceValue('maybe', true)).toBe('maybe');
-    expect(coerceValue('Europe/Istanbul', undefined)).toBe('Europe/Istanbul');
+  it('follows the kind of the setting', () => {
+    expect(coerceValue('a, b,,c', 'list')).toEqual(['a', 'b', 'c']);
+    expect(coerceValue('2', 'number')).toBe(2);
+    expect(coerceValue('two', 'number')).toBe('two');
+    expect(coerceValue(' ', 'number')).toBe(' ');
+    expect(coerceValue('false', 'boolean')).toBe(false);
+    expect(coerceValue('maybe', 'boolean')).toBe('maybe');
+    expect(coerceValue('Europe/Istanbul', 'text')).toBe('Europe/Istanbul');
+    expect(coerceValue('x', undefined)).toBe('x');
   });
 });
 

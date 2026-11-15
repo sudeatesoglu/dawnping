@@ -49,6 +49,14 @@ describe('parseConfig', () => {
     ]);
   });
 
+  it('says "is required" for a missing key', () => {
+    const config = { version: 1, profiles: { weekend: { days: ['sat'] } } };
+    expect(errorsOf(config)).toEqual([
+      'profiles.weekend.work: is required',
+      'profiles.weekend.trigger: is required',
+    ]);
+  });
+
   it('rejects unknown keys, so typos do not pass silently', () => {
     expect(errorsOf({ ...minimal, timezon: 'UTC' })).toEqual([
       'config: Unrecognized key: "timezon"',

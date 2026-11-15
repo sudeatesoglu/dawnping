@@ -1,3 +1,5 @@
+import type { SettingKind } from './kinds.ts';
+
 /**
  * Dot-separated key paths into the config, e.g. `profiles.friday.work`.
  *
@@ -7,9 +9,10 @@
 
 type Json = Record<string, unknown>;
 
-// Writing to these keys would change an object's prototype instead of
-// adding data (prototype pollution).
-const FORBIDDEN = new Set(['__proto__', 'constructor', 'prototype']);
+// Assigning to "__proto__" changes an object's prototype instead of adding
+// data (prototype pollution). Other names such as "constructor" are safe
+// here: reads check own keys only and writes use object literals.
+const FORBIDDEN = new Set(['__proto__']);
 
 /** Splits a key path, or returns undefined if it is empty or unsafe. */
 export function parseKeyPath(key: string): string[] | undefined {
@@ -45,10 +48,14 @@ export function setAt(root: Json, path: readonly string[], value: unknown): Json
 
 /**
  * A copy of `root` without the value at `path`, or undefined if it was not
- * set. Objects left empty are removed too, so unsetting `ping.model`
- * removes `ping` and its default applies again.
+ * set. With `pruneEmpty`, objects left empty are removed too, so unsetting
+ * `ping.model` can remove `ping` and let its default apply again.
  */
-export function unsetAt(root: Json, path: readonly string[]): Json | undefined {
+export function unsetAt(
+  root: Json,
+  path: readonly string[],
+  { pruneEmpty = false }: { pruneEmpty?: boolean } = {},
+): Json | undefined {
   const [head, ...rest] = path;
   if (head === undefined || !Object.hasOwn(root, head)) return undefined;
   if (rest.length === 0) {
@@ -57,33 +64,36 @@ export function unsetAt(root: Json, path: readonly string[]): Json | undefined {
   }
   const child = root[head];
   if (!isPlainObject(child)) return undefined;
-  const updated = unsetAt(child, rest);
+  const updated = unsetAt(child, rest, { pruneEmpty });
   if (updated === undefined) return undefined;
-  if (Object.keys(updated).length === 0) {
+  if (pruneEmpty && Object.keys(updated).length === 0) {
     const { [head]: _emptied, ...remaining } = root;
     return remaining;
   }
   return { ...root, [head]: updated };
 }
 
+/** Splits a comma-separated command-line list: trimmed, no empties, no duplicates. */
+export function splitList(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item !== ''),
+    ),
+  ];
+}
+
 /**
- * Converts a command-line string to the type of the value it replaces, so
+ * Converts a command-line string to the kind of value the setting holds, so
  * `config set skip 2026-12-24,2026-12-31` sets a list and
  * `config set version 1` sets a number. Validation decides the rest.
  */
-export function coerceValue(raw: string, current: unknown): unknown {
-  if (Array.isArray(current)) {
-    return raw
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item !== '');
-  }
-  if (typeof current === 'number' && raw.trim() !== '' && Number.isFinite(Number(raw))) {
-    return Number(raw);
-  }
-  if (typeof current === 'boolean' && (raw === 'true' || raw === 'false')) {
-    return raw === 'true';
-  }
+export function coerceValue(raw: string, kind: SettingKind | undefined): unknown {
+  if (kind === 'list') return splitList(raw);
+  if (kind === 'number' && raw.trim() !== '' && Number.isFinite(Number(raw))) return Number(raw);
+  if (kind === 'boolean' && (raw === 'true' || raw === 'false')) return raw === 'true';
   return raw;
 }
 

@@ -18,12 +18,19 @@ export type ParseResult =
 export function formatIssues(issues: readonly z.core.$ZodIssue[]): string[] {
   return issues.map((issue) => {
     const key = issue.path.map(String).join('.');
-    // An invalid record key wraps the key's own issue; show that message
-    // instead of the generic "Invalid key in record".
-    const message =
-      issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message;
-    return `${key === '' ? 'config' : key}: ${message}`;
+    return `${key === '' ? 'config' : key}: ${messageOf(issue)}`;
   });
+}
+
+function messageOf(issue: z.core.$ZodIssue): string {
+  // An invalid record key wraps the key's own issue; show that message
+  // instead of the generic "Invalid key in record".
+  if (issue.code === 'invalid_key') return issue.issues[0]?.message ?? issue.message;
+  // zod reports a missing key as "expected string, received undefined".
+  if (issue.code === 'invalid_type' && issue.message.endsWith('received undefined')) {
+    return 'is required';
+  }
+  return issue.message;
 }
 
 /**

@@ -1,14 +1,13 @@
 import type { Command } from 'commander';
+import { splitList } from '../../core/config/keypath.ts';
 import type { Profile } from '../../core/config/schema.ts';
 import { WEEKDAYS, type Weekday } from '../../core/time.ts';
 import { loadOrFail, validateAndSave } from '../config-file.ts';
 import { type CliContext, CliError } from '../context.ts';
 
+/** Weekdays from --days, case-insensitive ("Fri" works). */
 function parseDays(value: string): string[] {
-  return value
-    .split(',')
-    .map((day) => day.trim().toLowerCase())
-    .filter((day) => day !== '');
+  return splitList(value.toLowerCase());
 }
 
 interface AddOptions {

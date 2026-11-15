@@ -95,6 +95,13 @@ describe('config set', () => {
     expect(await readTextFile(t.ctx.paths.configFile)).toBeUndefined();
   });
 
+  it('sets a list for a profile that does not exist yet', async () => {
+    await t.run('config', 'set', 'profiles.weekend.days', 'sat,sun');
+    const result = await t.run('config', 'set', 'profiles.weekend.work', '11:00-14:00');
+    expect(result.stderr).toContain('profiles.weekend.trigger: is required');
+    expect(await readTextFile(t.ctx.paths.configFile)).toBeUndefined();
+  });
+
   it('rejects unknown keys', async () => {
     const result = await t.run('config', 'set', 'timezon', 'UTC');
     expect(result.stderr).toContain('Unrecognized key: "timezon"');
@@ -119,6 +126,11 @@ describe('config unset', () => {
     await t.run('config', 'set', 'ping.model', 'sonnet');
     expect((await t.run('config', 'unset', 'ping.model')).stdout).toBe('Removed ping.model\n');
     expect((await t.run('config', 'get', 'ping.model')).stdout).toBe('haiku\n');
+  });
+
+  it('keeps a required object when removing its last entry', async () => {
+    expect((await t.run('config', 'unset', 'profiles.default')).code).toBe(0);
+    expect((await readSaved()).profiles).toEqual({});
   });
 
   it('fails for a setting that is not in the file', async () => {
@@ -188,7 +200,7 @@ describe('config edit', () => {
     try {
       const result = await e.run('config', 'edit');
       expect(result.code).toBe(1);
-      expect(result.stderr).toMatch(/Not saved\. Your edits are kept in .*config\.json\n$/);
+      expect(result.stderr).toMatch(/Not saved\.\nYour edits are kept in .*config\.json\n$/);
       expect(await readTextFile(e.ctx.paths.configFile)).toBeUndefined();
     } finally {
       await e.cleanup();
@@ -199,8 +211,40 @@ describe('config edit', () => {
     const e = await createTestContext({ openEditor: async () => 2 });
     try {
       expect((await e.run('config', 'edit')).stderr).toBe(
-        'The editor exited with code 2; nothing was changed.\n',
+        'The editor exited with code 2; nothing was saved.\n',
       );
+    } finally {
+      await e.cleanup();
+    }
+  });
+
+  it('keeps the edits when the editor fails after the draft was changed', async () => {
+    const e = await createTestContext({
+      openEditor: async (file) => {
+        await writeFile(file, '{ half done');
+        return 1;
+      },
+    });
+    try {
+      const { stderr } = await e.run('config', 'edit');
+      expect(stderr).toMatch(
+        /^The editor exited with code 1; nothing was saved\.\nYour edits are kept in .*config\.json\n$/,
+      );
+    } finally {
+      await e.cleanup();
+    }
+  });
+
+  it('keeps the edits when the prompt fails unexpectedly', async () => {
+    const e = await createTestContext({
+      openEditor: editorWriting('{ broken'),
+      interactive: true,
+      confirm: async () => {
+        throw new Error('stdin closed');
+      },
+    });
+    try {
+      await expect(e.run('config', 'edit')).rejects.toThrow('stdin closed');
     } finally {
       await e.cleanup();
     }

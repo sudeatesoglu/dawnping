@@ -37,4 +37,11 @@ describe('confirm', () => {
   ])('treats %j as %s', async (answer, expected) => {
     expect(await ask(answer)).toBe(expected);
   });
+
+  it('treats closed input (Ctrl-D) as no', async () => {
+    const input = new PassThrough();
+    const pending = confirm('Continue?', input, new PassThrough());
+    input.end();
+    expect(await pending).toBe(false);
+  });
 });

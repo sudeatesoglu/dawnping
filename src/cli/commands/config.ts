@@ -1,7 +1,5 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { Command } from 'commander';
+import { createDraft } from '../../adapters/draft.ts';
 import { readTextFile, writeFileAtomic } from '../../adapters/file-store.ts';
 import {
   coerceValue,
@@ -12,7 +10,8 @@ import {
   setAt,
   unsetAt,
 } from '../../core/config/keypath.ts';
-import { parseConfigText, serializeConfig } from '../../core/config/parse.ts';
+import { settingKind } from '../../core/config/kinds.ts';
+import { parseConfig, parseConfigText, serializeConfig } from '../../core/config/parse.ts';
 import { defaultConfigInput } from '../../core/config/schema.ts';
 import { loadOrFail, validateAndSave } from '../config-file.ts';
 import { type CliContext, CliError } from '../context.ts';
@@ -70,8 +69,8 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
     .description('change one setting (validated before saving)')
     .action(async (key: string, raw: string) => {
       const path = keyPathOrFail(key);
-      const { config: effective, input } = await loadOrFail(ctx);
-      const value = coerceValue(raw, getAt(effective, path));
+      const { input } = await loadOrFail(ctx);
+      const value = coerceValue(raw, settingKind(path));
       await validateAndSave(ctx, setAt(input, path, value));
       ctx.stdout(`${key} = ${displayValue(value)}\n`);
     });
@@ -84,7 +83,11 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       const { input } = await loadOrFail(ctx);
       const updated = unsetAt(input, path);
       if (updated === undefined) throw new CliError(`Not set in the config file: ${key}`);
-      await validateAndSave(ctx, updated);
+      // Prefer removing objects left empty (unset ping.model removes ping,
+      // so its default applies), unless that removes something required
+      // (unsetting the last profile must keep "profiles": {}).
+      const pruned = unsetAt(input, path, { pruneEmpty: true });
+      await validateAndSave(ctx, pruned !== undefined && parseConfig(pruned).ok ? pruned : updated);
       ctx.stdout(`Removed ${key}\n`);
     });
 
@@ -100,40 +103,50 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
  * Edits a copy of the config, like `crontab -e` or `visudo`: the real file
  * is replaced only once the copy is valid, so a typo never breaks the
  * scheduled job. Works even when the current file is invalid.
+ *
+ * The draft is deleted only when nothing in it would be lost: after saving,
+ * or when it was not changed. Otherwise its location is printed.
  */
 async function editConfig(ctx: CliContext): Promise<void> {
   const file = ctx.paths.configFile;
   const original = (await readTextFile(file)) ?? serializeConfig(defaultConfigInput());
-  const draftDir = await mkdtemp(join(tmpdir(), 'dawnping-edit-'));
-  const draft = join(draftDir, 'config.json');
-  await writeFile(draft, original, { mode: 0o600 });
+  const draft = await createDraft('config.json', original);
 
-  for (;;) {
-    const exitCode = await ctx.openEditor(draft);
-    if (exitCode !== 0) {
-      await rm(draftDir, { recursive: true, force: true });
-      throw new CliError(`The editor exited with code ${exitCode}; nothing was changed.`);
-    }
+  try {
+    for (;;) {
+      const exitCode = await ctx.openEditor(draft.path);
+      if (exitCode !== 0) {
+        throw new CliError(`The editor exited with code ${exitCode}; nothing was saved.`);
+      }
+      const edited = await draft.read();
+      if (edited === original) {
+        await draft.remove();
+        ctx.stdout('No changes.\n');
+        return;
+      }
 
-    const edited = (await readTextFile(draft)) ?? '';
-    if (edited === original) {
-      await rm(draftDir, { recursive: true, force: true });
-      ctx.stdout('No changes.\n');
-      return;
-    }
+      const result = parseConfigText(edited);
+      if (result.ok) {
+        // Keep the user's own formatting: write the text, not a re-serialization.
+        await writeFileAtomic(file, edited);
+        await draft.remove();
+        ctx.stdout(`Saved ${file}\n`);
+        return;
+      }
 
-    const result = parseConfigText(edited);
-    if (result.ok) {
-      // Keep the user's own formatting: write the text, not a re-serialization.
-      await writeFileAtomic(file, edited);
-      await rm(draftDir, { recursive: true, force: true });
-      ctx.stdout(`Saved ${file}\n`);
-      return;
+      ctx.stderr(`The edited config is invalid:\n${result.errors.map((l) => `  ${l}\n`).join('')}`);
+      if (!ctx.interactive || !(await ctx.confirm('Edit again?'))) {
+        throw new CliError('Not saved.');
+      }
     }
-
-    ctx.stderr(`The edited config is invalid:\n${result.errors.map((l) => `  ${l}\n`).join('')}`);
-    if (!ctx.interactive || !(await ctx.confirm('Edit again?'))) {
-      throw new CliError(`Not saved. Your edits are kept in ${draft}`);
+  } catch (error) {
+    if ((await draft.read()) === original) {
+      await draft.remove();
+      throw error;
     }
+    const kept = `Your edits are kept in ${draft.path}`;
+    if (error instanceof CliError) throw new CliError(...error.lines, kept);
+    ctx.stderr(`${kept}\n`);
+    throw error;
   }
 }

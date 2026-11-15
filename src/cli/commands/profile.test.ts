@@ -46,6 +46,18 @@ describe('profile add', () => {
     });
   });
 
+  it('ignores repeated days', async () => {
+    await t.run('profile', 'add', 'weekend', '--days', 'sat,Sat,sun', '--work', '11:00-14:00');
+    expect((await savedProfiles()).weekend.days).toEqual(['sat', 'sun']);
+  });
+
+  it('allows names like "constructor" and keeps them editable', async () => {
+    await t.run('profile', 'add', 'constructor', '--days', 'sat', '--work', '10:00-12:00');
+    const result = await t.run('config', 'set', 'profiles.constructor.work', '10:00-13:00');
+    expect(result.code).toBe(0);
+    expect((await savedProfiles()).constructor.work).toBe('10:00-13:00');
+  });
+
   it('refuses days another profile has and suggests --take', async () => {
     const result = await t.run(
       'profile',

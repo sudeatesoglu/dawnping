@@ -21,16 +21,25 @@ export function openInEditor(
   });
 }
 
-/** Asks a yes/no question on the terminal; Enter means yes. */
+/**
+ * Asks a yes/no question on the terminal; Enter means yes. Closing the
+ * input (Ctrl-D) or interrupting the question (Ctrl-C) means no.
+ */
 export async function confirm(
   question: string,
   input: NodeJS.ReadableStream,
   output: NodeJS.WritableStream,
 ): Promise<boolean> {
   const rl = createInterface({ input, output });
+  const closed = new Promise<undefined>((resolve) => rl.once('close', () => resolve(undefined)));
   try {
-    const answer = (await rl.question(`${question} [Y/n] `)).trim().toLowerCase();
-    return answer === '' || answer === 'y' || answer === 'yes';
+    const answer = await Promise.race([
+      rl.question(`${question} [Y/n] `).catch(() => undefined),
+      closed,
+    ]);
+    if (answer === undefined) return false;
+    const normalized = answer.trim().toLowerCase();
+    return normalized === '' || normalized === 'y' || normalized === 'yes';
   } finally {
     rl.close();
   }

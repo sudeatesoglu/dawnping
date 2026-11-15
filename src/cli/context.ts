@@ -24,6 +24,8 @@ export interface CliContext {
   sessionLogs: SessionLogs;
   /** Desktop notifications. */
   notifier: Notifier;
+  /** Waits; instant in tests. */
+  sleep(ms: number): Promise<void>;
   /** Runs `dawnping tick` in the background (launchd on macOS). */
   scheduler: Scheduler;
   /**

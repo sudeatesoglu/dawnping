@@ -33,9 +33,9 @@ export function createFakeScheduler(): Scheduler & { installed: AgentSpec | unde
   };
 }
 
-/** A pinger that records the models it was asked to ping. */
 export const FAKE_PING_FOLDER = '-state-dawnping-ping';
 
+/** A pinger that records the models it was asked to ping. */
 export function createFakePinger(
   result: PingResult = { ok: true, durationMs: 2100, logFolder: FAKE_PING_FOLDER },
 ): Pinger & { pinged: string[] } {
@@ -63,7 +63,8 @@ export function createFakeSessionLogs(
   available = true,
 ): SessionLogs {
   return {
-    entriesSince: async (since) => entries(since),
+    entriesSince: async (since, folder) =>
+      entries(since).filter((entry) => folder === undefined || entry.folder === folder),
     available: async () => available,
   };
 }
@@ -100,6 +101,7 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
     pinger: createFakePinger(),
     sessionLogs: createFakeSessionLogs(),
     notifier: createFakeNotifier(),
+    sleep: async () => {},
     scheduler: createFakeScheduler(),
     invocation: () => ({
       node: '/usr/local/bin/node',

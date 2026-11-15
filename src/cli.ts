@@ -27,6 +27,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     env: process.env,
   }),
   sessionLogs: createSessionLogReader(paths.claudeProjectsDir),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   notifier: process.platform === 'darwin' ? createMacNotifier(runCommand) : silentNotifier,
   scheduler:
     process.platform === 'darwin'

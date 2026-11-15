@@ -111,6 +111,19 @@ describe('ping verification', () => {
     );
   });
 
+  it('waits for a log that is written a moment after the ping', async () => {
+    let reads = 0;
+    const late = createFakeSessionLogs((since) => {
+      reads += 1;
+      return reads < 3
+        ? []
+        : [{ timestamp: since + 2_000, model: 'claude-haiku-5-5', folder: FAKE_PING_FOLDER }];
+    });
+    const t = await context({ sessionLogs: late });
+    expect((await t.run('ping')).code).toBe(0);
+    expect(reads).toBe(3);
+  });
+
   it('does not accept an answer from another project as the ping', async () => {
     const other = createFakeSessionLogs((since) => [
       { timestamp: since + 1_000, model: 'claude-opus-5-5', folder: '-Users-u-work' },
@@ -149,6 +162,21 @@ describe('ping --notify', () => {
     expect(notifier.shown).toEqual([
       'dawnping: Ping sent, but it is not in the session log, so it may not have counted.',
     ]);
+  });
+
+  it('notifies an unexpected error too', async () => {
+    const notifier = createFakeNotifier();
+    const t = await context({
+      notifier,
+      sessionLogs: {
+        entriesSince: async () => {
+          throw new Error('disk on fire');
+        },
+        available: async () => true,
+      },
+    });
+    await expect(t.run('ping', '--notify')).rejects.toThrow('disk on fire');
+    expect(notifier.shown).toEqual(['dawnping: Ping failed.']);
   });
 
   it('notifies nothing without --notify', async () => {

@@ -1,6 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { AgentSpec, Scheduler } from '../../core/scheduler.ts';
+import { errorCode } from '../errors.ts';
 import { writeFileAtomic } from '../file-store.ts';
 import type { CommandResult, CommandRunner } from '../process.ts';
 
@@ -137,7 +138,7 @@ export function createLaunchdScheduler(options: LaunchdOptions): Scheduler {
         await rm(plistPath);
         return true;
       } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return loaded;
+        if (errorCode(error) === 'ENOENT') return loaded;
         throw error;
       }
     },

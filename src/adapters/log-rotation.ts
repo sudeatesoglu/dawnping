@@ -1,4 +1,5 @@
 import { rename, stat } from 'node:fs/promises';
+import { errorCode } from './errors.ts';
 
 /**
  * Keeps a log bounded: above `maxBytes` it becomes `<path>.1`, replacing an
@@ -9,7 +10,7 @@ export async function rotateLog(path: string, maxBytes: number): Promise<boolean
   try {
     if ((await stat(path)).size <= maxBytes) return false;
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+    if (errorCode(error) === 'ENOENT') return false;
     throw error;
   }
   await rename(path, `${path}.1`);

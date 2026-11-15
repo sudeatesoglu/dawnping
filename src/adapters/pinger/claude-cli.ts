@@ -1,6 +1,7 @@
 import { chmod, mkdir, realpath } from 'node:fs/promises';
 import { PING_PROMPT, type Pinger, type PingResult } from '../../core/pinger.ts';
 import { projectFolderName } from '../../core/session-logs.ts';
+import { errorCode } from '../errors.ts';
 import type { CommandRunner } from '../process.ts';
 
 export interface ClaudePingerOptions {
@@ -79,7 +80,7 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
           env: subscriptionEnvironment(options.env),
         });
       } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        if (errorCode(error) === 'ENOENT') {
           return { ok: false, failure: 'not-found', detail: 'claude is not on PATH' };
         }
         throw error;

@@ -74,15 +74,4 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         removed ? 'Uninstalled. dawnping no longer runs in the background.\n' : 'Not installed.\n',
       );
     });
-
-  // Run by the background agent. The planner that decides whether to ping
-  // is added separately; until then a tick only records that it ran.
-  program
-    .command('tick', { hidden: true })
-    .description('internal: run by the background agent')
-    .action(() => {
-      ctx.stdout(
-        `${new Date(ctx.clock.now()).toISOString()} tick: no planner yet, nothing to do\n`,
-      );
-    });
 }

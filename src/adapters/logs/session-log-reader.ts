@@ -3,15 +3,12 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { LogEntry, SessionLogs } from '../../core/session-logs.ts';
+import { errorCode } from '../errors.ts';
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
-}
+const isMissing = (error: unknown) => errorCode(error) === 'ENOENT';
 
 /** ENOENT, EACCES and the like: the file system said no. */
-function isFileSystemError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && typeof error.code === 'string';
-}
+const isFileSystemError = (error: unknown) => errorCode(error) !== undefined;
 
 async function listOrEmpty(dir: string) {
   try {

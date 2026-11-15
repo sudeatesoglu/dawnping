@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { errorCode } from './errors.ts';
 
 /** Reads a UTF-8 file, or returns undefined if it does not exist. */
 export async function readTextFile(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, 'utf8');
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
+    if (errorCode(error) === 'ENOENT') return undefined;
     throw error;
   }
 }
@@ -56,7 +57,7 @@ async function resolveTarget(path: string): Promise<string> {
   try {
     return await realpath(path);
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return path;
+    if (errorCode(error) === 'ENOENT') return path;
     throw error;
   }
 }
@@ -68,8 +69,4 @@ async function syncDirectory(directory: string): Promise<void> {
   } finally {
     await handle.close();
   }
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error;
 }

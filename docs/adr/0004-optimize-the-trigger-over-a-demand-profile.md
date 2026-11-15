@@ -16,7 +16,7 @@ A closed formula ("ping so the first and last parts of the day are equal") was c
 
 We will choose the trigger time with a small, exhaustive optimization over a **demand profile**.
 
-**Demand profile.** A day is 288 slots of 5 minutes. Each slot has a relative activity weight: 0 for not working, 1 for an ordinary working stretch, more for busier stretches. The optimizer does not know where the profile comes from. Today it is built from the user's `work` range and optional `busy` ranges with weights. Later it can be learned from the session logs (#25), with values the user sets explicitly taking precedence.
+**Demand profile.** A day is 288 slots of 5 minutes. Each slot has a relative activity weight: 0 for not working, 1 for an ordinary working stretch, more for busier stretches. A busy range with weight 0 marks a break, such as lunch. Busy ranges may not overlap. Times that feed the planner use 5-minute steps, so plans are never off by rounding. The optimizer does not know where the profile comes from. Today it is built from the user's `work` range and optional `busy` ranges with weights. Later it can be learned from the session logs (#25), with values the user sets explicitly taking precedence.
 
 **Simulation.** For a candidate trigger T, the day's windows are chained realistically:
 

@@ -42,7 +42,7 @@ export function simulate(demand: DemandProfile, trigger: number): Plan {
     const end = start + WINDOW_SLOTS;
     let load = 0;
     let activeSlots = 0;
-    for (let slot = Math.max(start, 0); slot < Math.min(end, demand.length); slot++) {
+    for (let slot = start; slot < Math.min(end, demand.length); slot++) {
       load += demand[slot] ?? 0;
       if (active(slot)) activeSlots += 1;
     }
@@ -66,10 +66,18 @@ export function comparePlans(a: Plan, b: Plan): number {
   const squares = (p: Plan) => p.windows.reduce((sum, w) => sum + w.load ** 2, 0);
   return (
     b.windows.length - a.windows.length ||
-    peak(a) - peak(b) ||
-    squares(a) - squares(b) ||
+    compareLoads(peak(a), peak(b)) ||
+    compareLoads(squares(a), squares(b)) ||
     b.trigger - a.trigger
   );
+}
+
+/**
+ * Loads are sums of fractional weights, so equal loads can differ by a
+ * rounding error; those must count as a tie, not decide the plan.
+ */
+function compareLoads(a: number, b: number): number {
+  return Math.abs(a - b) < 1e-9 ? 0 : a - b;
 }
 
 /**

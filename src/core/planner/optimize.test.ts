@@ -67,6 +67,13 @@ describe('simulate', () => {
 });
 
 describe('comparePlans', () => {
+  it('treats loads that differ only by rounding as equal', () => {
+    const a = { trigger: 10, windows: [{ start: 10, end: 70, activeSlots: 3, load: 0.1 + 0.2 }] };
+    const b = { trigger: 20, windows: [{ start: 20, end: 80, activeSlots: 3, load: 0.3 }] };
+    // Equal loads: the later ping (b) wins, not the rounding error.
+    expect(comparePlans(a, b)).toBeGreaterThan(0);
+  });
+
   it('prefers more windows over a lighter peak', () => {
     const day = manualDemand({ work: '12:00-17:00' });
     const two = simulate(day, 9 * 12);

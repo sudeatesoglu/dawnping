@@ -24,15 +24,43 @@ const ProfileName = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, {
   error: 'name must start with a letter and use only a-z, 0-9 and "-" (max 32)',
 });
 
-export const Profile = z.strictObject({
-  days: z.array(WeekdaySchema).min(1, { error: 'must list at least one day' }),
-  work: WorkRange,
-  /** "auto" lets dawnping choose; a fixed time like "06:30" overrides it. */
-  // One refinement instead of a union, so the error names both options.
-  trigger: z.string().refine((value) => value === 'auto' || parseTime(value) !== undefined, {
-    error: 'must be "auto" or a time like 06:30',
-  }),
+/** A stretch of the working day with more (or less) activity than usual. */
+const BusyRange = z.strictObject({
+  range: WorkRange,
+  /**
+   * Activity relative to an ordinary working stretch (1). Omitted: learned
+   * from the session logs once that exists, else a default.
+   */
+  weight: z.number().positive({ error: 'must be greater than 0' }).max(10).optional(),
 });
+
+export const Profile = z
+  .strictObject({
+    days: z.array(WeekdaySchema).min(1, { error: 'must list at least one day' }),
+    work: WorkRange,
+    /** "auto" lets dawnping choose; a fixed time like "06:30" overrides it. */
+    // One refinement instead of a union, so the error names both options.
+    trigger: z.string().refine((value) => value === 'auto' || parseTime(value) !== undefined, {
+      error: 'must be "auto" or a time like 06:30',
+    }),
+    busy: z.array(BusyRange).optional(),
+  })
+  .superRefine((profile, ctx) => {
+    // Busy ranges describe parts of the working day; outside it they would
+    // silently extend it. May run with invalid fields, so parse defensively.
+    const work = parseWorkRange(profile.work);
+    if (work === undefined) return;
+    (profile.busy ?? []).forEach((busy, index) => {
+      const range = parseWorkRange(busy.range);
+      if (range !== undefined && (range.start < work.start || range.end > work.end)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['busy', index, 'range'],
+          message: `must lie inside the working hours ${profile.work}`,
+        });
+      }
+    });
+  });
 export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PING_MODEL = 'haiku';

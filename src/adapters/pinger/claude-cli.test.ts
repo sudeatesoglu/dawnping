@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +24,7 @@ function pinger(answer: CommandResult | Error) {
   return createClaudePinger({
     directory: join(dir, 'ping'),
     timeoutMs: 30_000,
+    env: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-test' },
     now: () => {
       time += 1_500;
       return time;
@@ -44,10 +45,25 @@ describe('createClaudePinger', () => {
       {
         program: 'claude',
         args: ['-p', '--model', 'haiku', PING_PROMPT],
-        options: { cwd: join(dir, 'ping'), timeoutMs: 30_000 },
+        // The API key is removed so the ping uses the subscription.
+        options: { cwd: join(dir, 'ping'), timeoutMs: 30_000, env: { PATH: '/usr/bin' } },
       },
     ]);
     expect((await stat(join(dir, 'ping'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('tightens an existing ping folder to 0700', async () => {
+    await mkdir(join(dir, 'ping'), { mode: 0o755 });
+    await pinger({ code: 0, stdout: '', stderr: '' }).ping('haiku');
+    expect((await stat(join(dir, 'ping'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('reports a ping folder that cannot be created', async () => {
+    await writeFile(join(dir, 'ping'), 'not a folder');
+    const result = await pinger({ code: 0, stdout: '', stderr: '' }).ping('haiku');
+    expect(result).toMatchObject({ ok: false, failure: 'failed' });
+    expect(result.ok || result.detail).toMatch(/^cannot use the ping folder: /);
+    expect(calls).toEqual([]);
   });
 
   it('describes the command for --dry-run', () => {
@@ -88,6 +104,15 @@ describe('createClaudePinger', () => {
       failure: 'not-logged-in',
       detail: 'Invalid API key · Please run /login',
     });
+  });
+
+  it('does not treat every mention of /login as a missing login', async () => {
+    const result = await pinger({
+      code: 1,
+      stdout: '',
+      stderr: 'Usage limit reached. Use /login to switch accounts.\n',
+    }).ping('haiku');
+    expect(result).toMatchObject({ failure: 'failed' });
   });
 
   it('reports other failures with the first line of the error', async () => {

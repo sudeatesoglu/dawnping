@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Pinger, PingResult } from '../core/pinger.ts';
+import { PING_PROMPT, type Pinger, type PingResult } from '../core/pinger.ts';
 import type { AgentSpec, Scheduler } from '../core/scheduler.ts';
 import type { CliContext } from './context.ts';
 import { runCli } from './program.ts';
@@ -38,7 +38,7 @@ export function createFakePinger(
   return {
     pinged: [],
     describe: (model) => ({
-      command: ['claude', '-p', '--model', model, 'Reply with the single word: ok'],
+      command: ['claude', '-p', '--model', model, PING_PROMPT],
       directory: '/state/ping',
     }),
     async ping(model) {

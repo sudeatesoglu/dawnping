@@ -13,8 +13,9 @@ const HINTS: Record<PingFailure, string> = {
   failed: 'Run `claude -p "hi"` yourself to see the full error.',
 };
 
+/** Shell-quotes an argument so the printed command can be pasted as is. */
 function quote(arg: string): string {
-  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `"${arg.replaceAll('"', '\\"')}"`;
+  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`;
 }
 
 export function registerPingCommand(program: Command, ctx: CliContext): void {
@@ -30,15 +31,6 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
         const { command, directory } = ctx.pinger.describe(model);
         ctx.stdout(`Would run: ${command.map(quote).join(' ')}\n  in ${directory}\n`);
         return;
-      }
-
-      // With an API key set, claude may bill the API instead of starting
-      // the subscription window, which is the whole point of the ping.
-      if (ctx.env['ANTHROPIC_API_KEY']) {
-        ctx.stderr(
-          'Warning: ANTHROPIC_API_KEY is set. claude may use API billing instead of your subscription,\n' +
-            'and then the ping does not start your usage window.\n',
-        );
       }
 
       const result = await ctx.pinger.ping(model);

@@ -32,30 +32,39 @@ describe('ping', () => {
     const pinger = createFakePinger();
     const t = await context({ pinger });
     expect((await t.run('ping', '--dry-run')).stdout).toBe(
-      'Would run: claude -p --model haiku "Reply with the single word: ok"\n  in /state/ping\n',
+      "Would run: claude -p --model haiku 'Reply with the single word: ok'\n  in /state/ping\n",
     );
     expect(pinger.pinged).toEqual([]);
   });
 
   it.each([
-    ['not-found', 'claude is not on PATH', 'Install Claude Code'],
-    ['not-logged-in', 'Please run /login', 'Log in to Claude Code first'],
-    ['timeout', 'no answer within 60s', 'Check your network connection'],
-    ['failed', 'exit code 2', 'Run `claude -p "hi"` yourself'],
+    [
+      'not-found',
+      'claude is not on PATH',
+      'Install Claude Code, or make sure `claude` is on your PATH.',
+    ],
+    [
+      'not-logged-in',
+      'Please run /login',
+      'Log in to Claude Code first: run `claude` and follow the login steps.',
+    ],
+    ['timeout', 'no answer within 60s', 'Check your network connection and try again.'],
+    ['failed', 'exit code 2', 'Run `claude -p "hi"` yourself to see the full error.'],
   ] as const)('explains a %s failure', async (failure, detail, hint) => {
     const t = await context({ pinger: createFakePinger({ ok: false, failure, detail }) });
-    const result = await t.run('ping');
-    expect(result.code).toBe(1);
-    expect(result.stderr).toBe(`Ping failed: ${detail}.\n${result.stderr.split('\n')[1]}\n`);
-    expect(result.stderr).toContain(hint);
+    expect(await t.run('ping')).toEqual({
+      code: 1,
+      stdout: '',
+      stderr: `Ping failed: ${detail}.\n${hint}\n`,
+    });
   });
 
-  it('warns when an API key could take over billing', async () => {
-    const t = await context({ env: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-test' } });
-    const result = await t.run('ping');
-    expect(result.code).toBe(0);
-    expect(result.stderr).toContain('ANTHROPIC_API_KEY is set');
-    expect(result.stderr).not.toContain('sk-test');
+  it('refuses a model name that claude could read as a flag', async () => {
+    const t = await context();
+    // `--` makes commander pass the value through instead of parsing it.
+    const result = await t.run('config', 'set', 'ping.model', '--', '--dangerous');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('ping.model: must be a model name or alias');
   });
 
   it('leaves out the reset time when no time zone is usable', async () => {

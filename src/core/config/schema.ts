@@ -49,7 +49,13 @@ export const ConfigSchema = z
       .refine(isValidTimeZone, { error: 'must be an IANA time zone like Europe/Istanbul' })
       .optional(),
     ping: z
-      .strictObject({ model: z.string().min(1, { error: 'must not be empty' }) })
+      .strictObject({
+        // Passed to `claude --model` as its own argument: a value starting
+        // with "-" would be read as another flag.
+        model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]*$/, {
+          error: 'must be a model name or alias like haiku or claude-haiku-5-5',
+        }),
+      })
       .default({ model: DEFAULT_PING_MODEL }),
     profiles: z.record(ProfileName, Profile),
     /** Dates (YYYY-MM-DD, in the configured time zone) without a ping. */

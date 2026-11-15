@@ -19,7 +19,11 @@ process.exitCode = await runCli(process.argv.slice(2), {
   paths,
   clock: systemClock,
   systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  pinger: createClaudePinger({ directory: join(paths.stateDir, 'ping'), run: runCommand }),
+  pinger: createClaudePinger({
+    directory: join(paths.stateDir, 'ping'),
+    run: runCommand,
+    env: process.env,
+  }),
   scheduler:
     process.platform === 'darwin'
       ? createLaunchdScheduler({

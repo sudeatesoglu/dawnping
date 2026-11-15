@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { chmod, mkdir } from 'node:fs/promises';
 import { PING_PROMPT, type Pinger, type PingResult } from '../../core/pinger.ts';
 import type { CommandRunner } from '../process.ts';
 
@@ -6,13 +6,27 @@ export interface ClaudePingerOptions {
   /** The fixed, empty directory every ping runs in (ADR-0003). */
   directory: string;
   run: CommandRunner;
+  /** The environment claude runs with (usually process.env). */
+  env: Readonly<Record<string, string | undefined>>;
   /** Default 60 s; a ping normally takes a few seconds. */
   timeoutMs?: number;
   now?: () => number;
 }
 
 /** Claude Code's reply when no account is set up. */
-const NOT_LOGGED_IN = /not logged in|please run \/login|\/login|invalid api key/i;
+const NOT_LOGGED_IN = /not logged in|please run \/login|invalid api key/i;
+
+/**
+ * With an API key in the environment, claude can bill the API instead of
+ * the subscription, and then the ping does not start the usage window
+ * (ADR-0003). The ping always uses the logged-in subscription.
+ */
+function subscriptionEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
+  const { ANTHROPIC_API_KEY: _apiKey, ...rest } = env;
+  return rest;
+}
 
 function firstLine(text: string): string {
   return text.trim().split('\n')[0]?.trim() ?? '';
@@ -31,11 +45,23 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
     describe: (model) => ({ command: ['claude', ...args(model)], directory: options.directory }),
 
     async ping(model): Promise<PingResult> {
-      await mkdir(options.directory, { recursive: true, mode: 0o700 });
+      try {
+        await mkdir(options.directory, { recursive: true, mode: 0o700 });
+        // mkdir only sets the mode on a folder it creates.
+        await chmod(options.directory, 0o700);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return { ok: false, failure: 'failed', detail: `cannot use the ping folder: ${reason}` };
+      }
+
       const started = now();
       let result: Awaited<ReturnType<CommandRunner>>;
       try {
-        result = await options.run('claude', args(model), { cwd: options.directory, timeoutMs });
+        result = await options.run('claude', args(model), {
+          cwd: options.directory,
+          timeoutMs,
+          env: subscriptionEnvironment(options.env),
+        });
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           return { ok: false, failure: 'not-found', detail: 'claude is not on PATH' };

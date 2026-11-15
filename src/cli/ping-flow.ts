@@ -1,18 +1,23 @@
-import type { PingFailure } from '../core/pinger.ts';
+import type { PingFailure, PingOutcome } from '../core/pinger.ts';
 import { findPingEntry, LOG_TOLERANCE_MS } from '../core/session-logs.ts';
 import type { CliContext } from './context.ts';
 
-export type PingOutcome = 'verified' | 'unverified' | PingFailure;
+export type { PingOutcome };
 
-export interface PingReport {
-  outcome: PingOutcome;
-  startedAt: number;
-  durationMs?: number;
-  /** The project folder the ping should be logged in. */
-  logFolder?: string;
-  /** For failures: the first line of the error. */
-  detail?: string;
-}
+export type PingReport =
+  | {
+      outcome: 'verified' | 'unverified';
+      startedAt: number;
+      durationMs: number;
+      /** The project folder the ping should be logged in. */
+      logFolder: string;
+    }
+  | {
+      outcome: PingFailure;
+      startedAt: number;
+      /** The first line of the error. */
+      detail: string;
+    };
 
 /** What to tell the user at the terminal for each way a ping can fail. */
 export const HINTS: Record<PingFailure, string> = {

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readTextFile } from '../../adapters/file-store.ts';
+import { MAX_ATTEMPTS_PER_DAY } from '../../core/planner/tick.ts';
 import type { CliContext } from '../context.ts';
 import {
   createFakeNotifier,
@@ -75,28 +76,94 @@ describe('tick', () => {
     expect(pinger.pinged).toEqual([]);
   });
 
-  it('retries a failed ping, notifies, and gives up after three attempts', async () => {
+  it('retries failures with growing gaps and notifies only the first and the last', async () => {
+    let now = MONDAY_7AM;
     const notifier = createFakeNotifier();
     const pinger = createFakePinger({
       ok: false,
       failure: 'not-logged-in',
       detail: 'Please run /login',
     });
-    const t = await context({ pinger, notifier });
+    const t = await context({ pinger, notifier, clock: { now: () => now } });
 
     const first = await t.run('tick');
     expect(first.code).toBe(1);
     expect(first.stderr).toBe(
       '2026-11-16T04:00:00.000Z pinged haiku at ping time (planned for 06:00): not-logged-in (Please run /login)\n',
     );
-    await t.run('tick');
-    const third = await t.run('tick');
-    expect(third.stderr).toContain('; giving up for today after 3 attempts\n');
-    expect((await t.run('tick')).stdout).toContain('no ping: gave up after 3 failed pings today');
-    expect(pinger.pinged).toHaveLength(3);
-    expect(notifier.shown).toEqual(
-      new Array(3).fill('dawnping: Ping failed: Claude Code is not logged in.'),
+    // Five minutes later it waits instead of pinging again.
+    now += 5 * 60_000;
+    expect((await t.run('tick')).stdout).toContain('no ping: retrying at 07:15');
+
+    // Retries at +15, +30, +60 and +120 minutes; the last one gives up.
+    for (const minutes of [15, 30, 60, 120]) {
+      now += minutes * 60_000;
+      await t.run('tick');
+    }
+    expect(pinger.pinged).toHaveLength(MAX_ATTEMPTS_PER_DAY);
+    now += 5 * 60_000;
+    expect((await t.run('tick')).stdout).toContain(
+      `no ping: gave up after ${MAX_ATTEMPTS_PER_DAY} failed pings today`,
     );
+    expect(notifier.shown).toEqual([
+      'dawnping: Ping failed: Claude Code is not logged in.',
+      'dawnping: Ping failed: Claude Code is not logged in.',
+    ]);
+  });
+
+  it('records the attempt before pinging', async () => {
+    let seen: unknown;
+    const t = await context();
+    const pinger = createFakePinger();
+    const original = pinger.ping.bind(pinger);
+    pinger.ping = async (model) => {
+      seen = JSON.parse(await readFile(join(t.ctx.paths.stateDir, 'state.json'), 'utf8'));
+      return original(model);
+    };
+    t.ctx.pinger = pinger;
+    await t.run('tick');
+    expect(seen).toMatchObject({ lastPing: { outcome: 'pending', attempts: 1 } });
+    expect(await readState(t.ctx.paths.stateDir)).toMatchObject({
+      lastPing: { outcome: 'verified' },
+    });
+  });
+
+  it('does not ping when the attempt cannot be recorded', async () => {
+    const pinger = createFakePinger();
+    const notifier = createFakeNotifier();
+    const t = await context({ pinger, notifier });
+    await mkdir(join(t.ctx.paths.stateDir, 'state.json'), { recursive: true });
+    const result = await t.run('tick');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/error: /);
+    expect(pinger.pinged).toEqual([]);
+    expect(notifier.shown).toEqual(['dawnping: Ping failed.']);
+  });
+
+  it('reads the session logs only when it would ping', async () => {
+    let reads = 0;
+    const sessionLogs = createFakeSessionLogs((since) => {
+      reads += 1;
+      return [{ timestamp: since + 60_000, model: 'claude-haiku-5-5', folder: '-x' }];
+    });
+    const t = await context({
+      sessionLogs,
+      clock: { now: () => Date.parse('2026-11-16T05:00:00+03:00') },
+    });
+    expect((await t.run('tick')).stdout).toContain('no ping: next ping at 06:00');
+    expect(reads).toBe(0);
+  });
+
+  it('logs and notifies when the state folder cannot be used', async () => {
+    const notifier = createFakeNotifier();
+    const t = await context({ notifier });
+    // The state "folder" is a file: rotating the log and locking both fail.
+    await mkdir(join(t.ctx.paths.stateDir, '..'), { recursive: true });
+    await writeFile(t.ctx.paths.stateDir, 'not a folder');
+    const result = await t.run('tick');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/^2026-11-16T04:00:00\.000Z error: /);
+    expect(notifier.shown).toEqual(['dawnping: Ping failed.']);
   });
 
   it('reports an unverified ping and does not repeat it', async () => {
@@ -104,7 +171,7 @@ describe('tick', () => {
     const t = await context({ notifier, sessionLogs: createFakeSessionLogs(() => []) });
     const result = await t.run('tick');
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain(': unverified\n');
+    expect(result.stderr).toContain(': unverified, not in the session log\n');
     expect(notifier.shown).toHaveLength(1);
     expect((await t.run('tick')).stdout).toContain('no ping: already pinged today');
   });

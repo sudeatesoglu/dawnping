@@ -49,13 +49,13 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
       }
       await notify(report.outcome);
 
-      if (report.outcome !== 'verified' && report.outcome !== 'unverified') {
+      if ('detail' in report) {
         throw new CliError(`Ping failed: ${report.detail}.`, HINTS[report.outcome]);
       }
 
       // The ping starts a window only if none was active, and this command
       // cannot tell; `tick` checks the session logs for that before pinging.
-      const seconds = ((report.durationMs ?? 0) / 1000).toFixed(1);
+      const seconds = (report.durationMs / 1000).toFixed(1);
       const timeZone = effectiveTimeZone(config, ctx.systemTimeZone);
       const reset =
         timeZone === undefined

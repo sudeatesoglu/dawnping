@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { effectiveTimeZone } from '../../core/config/resolve.ts';
 import { type PingFailure, WINDOW_MS } from '../../core/pinger.ts';
+import { CLOCK_SKEW_MS, findPingEntry } from '../../core/session-logs.ts';
 import { formatTime, toLocalTime } from '../../core/time.ts';
 import { loadOrFail } from '../config-file.ts';
 import { type CliContext, CliError } from '../context.ts';
@@ -13,6 +14,19 @@ const HINTS: Record<PingFailure, string> = {
   failed: 'Run `claude -p "hi"` yourself to see the full error.',
 };
 
+/**
+ * Notification texts. Fixed strings only: a notification can be seen by
+ * anyone near the screen, so no error details, paths or prompts.
+ */
+const NOTIFICATIONS: Record<PingFailure | 'verified' | 'unverified', string> = {
+  verified: 'Ping sent and confirmed in the session log.',
+  unverified: 'Ping sent, but it is not in the session log, so it may not have counted.',
+  'not-found': 'Ping failed: the claude command was not found.',
+  'not-logged-in': 'Ping failed: Claude Code is not logged in.',
+  timeout: 'Ping failed: no answer in time.',
+  failed: 'Ping failed.',
+};
+
 /** Shell-quotes an argument so the printed command can be pasted as is. */
 function quote(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`;
@@ -23,7 +37,8 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
     .command('ping')
     .description('start the usage window now with one tiny message')
     .option('--dry-run', 'print what would run, without sending anything')
-    .action(async (options: { dryRun?: boolean }) => {
+    .option('--notify', 'also show the result as a desktop notification')
+    .action(async (options: { dryRun?: boolean; notify?: boolean }) => {
       const { config } = await loadOrFail(ctx);
       const model = config.ping.model;
 
@@ -33,8 +48,16 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
         return;
       }
 
+      const notify = async (outcome: keyof typeof NOTIFICATIONS) => {
+        if (options.notify && !(await ctx.notifier.notify('dawnping', NOTIFICATIONS[outcome]))) {
+          ctx.stderr('(Could not show a desktop notification.)\n');
+        }
+      };
+
+      const startedAt = ctx.clock.now();
       const result = await ctx.pinger.ping(model);
       if (!result.ok) {
+        await notify(result.failure);
         throw new CliError(`Ping failed: ${result.detail}.`, HINTS[result.failure]);
       }
 
@@ -49,6 +72,22 @@ export function registerPingCommand(program: Command, ctx: CliContext): void {
       ctx.stdout(
         `Pinged ${model} in ${seconds}s.\n` +
           `If no usage window was active, one started now${reset}.\n`,
+      );
+
+      // A ping that is not in the session log may not have counted toward
+      // the subscription (e.g. billed elsewhere, or Claude Code changed).
+      const entries = await ctx.sessionLogs.entriesSince(startedAt - CLOCK_SKEW_MS);
+      if (findPingEntry(entries, result.logFolder, startedAt)) {
+        await notify('verified');
+        ctx.stdout('Confirmed: Claude Code logged the ping.\n');
+        return;
+      }
+      await notify('unverified');
+      throw new CliError(
+        "The ping is not in Claude Code's session log, so it may not have counted.",
+        (await ctx.sessionLogs.available())
+          ? `Expected it in ${ctx.paths.claudeProjectsDir}/${result.logFolder}`
+          : `No session logs found at ${ctx.paths.claudeProjectsDir}. Set CLAUDE_CONFIG_DIR if Claude Code keeps them elsewhere.`,
       );
     });
 }

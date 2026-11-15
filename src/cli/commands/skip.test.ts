@@ -66,6 +66,12 @@ describe('skip', () => {
   it.each([
     [['yesterday'], 'Not a date: "yesterday" (use today, tomorrow or YYYY-MM-DD)\n'],
     [['2026-11-14'], '2026-11-14 is in the past.\n'],
+    [
+      ['2026-11-01', '2026-11-02', 'today'],
+      'These dates are in the past: 2026-11-01, 2026-11-02.\n',
+    ],
+    [['2026-11-01', '--until', '2026-11-20'], '2026-11-01 is in the past.\n'],
+    [['tomorrow', '--list'], '--list does not take dates; run it on its own.\n'],
     [[], 'Give a date to skip (today, tomorrow or YYYY-MM-DD) or --list.\n'],
     [['2026-12-24', '--until', '2026-12-01'], '--until 2026-12-01 is before 2026-12-24.\n'],
     [['a', 'b', '--until', '2026-12-01'], 'Not a date: "a" (use today, tomorrow or YYYY-MM-DD)\n'],
@@ -73,6 +79,27 @@ describe('skip', () => {
     [['today', '--until', '2062-01-01'], 'That is 12832 days; at most 366 at once.\n'],
   ])('rejects %j', async (args, message) => {
     expect(await t.run('skip', ...args)).toEqual({ code: 1, stdout: '', stderr: message });
+  });
+
+  it('shows the right weekday east of UTC+12', async () => {
+    // 2026-11-21 is a Saturday everywhere, also in Auckland (UTC+13).
+    await t.run('config', 'set', 'timezone', 'Pacific/Auckland');
+    expect((await t.run('skip', '2026-11-21')).stdout).toBe(
+      'Skipping 2026-11-21 (Sat, already a rest day)\n',
+    );
+    expect((await t.run('skip', '2026-11-20')).stdout).toBe('Skipping 2026-11-20 (Fri)\n');
+  });
+
+  it('asks for a time zone when the system one is unusable', async () => {
+    const e = await createTestContext({ systemTimeZone: 'Etc/Unknown' });
+    try {
+      expect((await e.run('skip', 'tomorrow')).stderr).toBe(
+        'The system time zone "Etc/Unknown" is not an IANA zone like Europe/Istanbul.\n' +
+          'Set yours with: dawnping config set timezone <zone>\n',
+      );
+    } finally {
+      await e.cleanup();
+    }
   });
 
   it('lists upcoming skipped dates', async () => {
@@ -87,6 +114,18 @@ describe('unskip', () => {
     await t.run('skip', 'tomorrow', '2026-11-20');
     expect((await t.run('unskip', 'tomorrow')).stdout).toBe('No longer skipping 2026-11-16\n');
     expect(await savedSkip()).toEqual(['2026-11-20']);
+  });
+
+  it('does not leave an empty skip list in a file that had none', async () => {
+    await t.run('config', 'set', 'timezone', 'Europe/Istanbul');
+    await t.run('skip', 'tomorrow');
+    await t.run('unskip', 'tomorrow');
+    expect(await savedSkip()).toBeUndefined();
+  });
+
+  it('refuses past dates', async () => {
+    await t.run('config', 'set', 'skip', '2026-11-01,2026-11-20');
+    expect((await t.run('unskip', '2026-11-01')).stderr).toBe('2026-11-01 is in the past.\n');
   });
 
   it('fails for a date that is not skipped', async () => {

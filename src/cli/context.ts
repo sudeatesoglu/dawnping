@@ -1,4 +1,5 @@
 import type { Paths } from '../adapters/paths.ts';
+import type { Clock } from '../core/clock.ts';
 
 /**
  * Everything a command needs from the outside world.
@@ -9,6 +10,10 @@ import type { Paths } from '../adapters/paths.ts';
  */
 export interface CliContext {
   paths: Paths;
+  /** The current time; a fixed value in tests. */
+  clock: Clock;
+  /** The system's IANA time zone, used when the config sets none. */
+  systemTimeZone: string;
   stdout(text: string): void;
   stderr(text: string): void;
   /** Opens a file in the user's editor and resolves with its exit code. */

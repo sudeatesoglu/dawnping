@@ -21,3 +21,4 @@ Accepted records are immutable. When a decision changes, write a new ADR that su
 | --- | --- | --- |
 | [0001](0001-ports-and-adapters-with-a-pure-core.md) | Ports and adapters with a tool-enforced pure core | Accepted |
 | [0002](0002-json-config-in-xdg-directories.md) | JSON config in XDG directories, managed through the CLI | Accepted |
+| [0003](0003-start-the-window-with-a-headless-haiku-ping.md) | Start the usage window with a headless Haiku ping | Accepted |

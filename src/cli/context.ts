@@ -1,5 +1,6 @@
 import type { Paths } from '../adapters/paths.ts';
 import type { Clock } from '../core/clock.ts';
+import type { Scheduler } from '../core/scheduler.ts';
 
 /**
  * Everything a command needs from the outside world.
@@ -14,6 +15,12 @@ export interface CliContext {
   clock: Clock;
   /** The system's IANA time zone, used when the config sets none. */
   systemTimeZone: string;
+  /** Runs `dawnping tick` in the background (launchd on macOS). */
+  scheduler: Scheduler;
+  /** How this CLI was started: absolute paths of node and the script. */
+  invocation: { node: string; script: string };
+  /** Environment variables, e.g. PATH for the background agent. */
+  env: Readonly<Record<string, string | undefined>>;
   stdout(text: string): void;
   stderr(text: string): void;
   /** Opens a file in the user's editor and resolves with its exit code. */

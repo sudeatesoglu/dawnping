@@ -25,9 +25,13 @@ process.exitCode = await runCli(process.argv.slice(2), {
           run: runCommand,
         })
       : createUnsupportedScheduler(process.platform),
-  // The real path, so the agent keeps working if a symlink (e.g. a global
-  // npm bin link) changes.
-  invocation: { node: process.execPath, script: realpathSync(process.argv[1] ?? '') },
+  invocation: () => ({
+    node: process.execPath,
+    nodeArgs: process.execArgv,
+    // The real path, so the agent keeps working if a symlink (e.g. a global
+    // npm bin link) changes.
+    script: realpathSync(process.argv[1] ?? ''),
+  }),
   env: process.env,
   stdout: (text) => process.stdout.write(text),
   stderr: (text) => process.stderr.write(text),

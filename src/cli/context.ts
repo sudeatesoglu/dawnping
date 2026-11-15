@@ -17,8 +17,11 @@ export interface CliContext {
   systemTimeZone: string;
   /** Runs `dawnping tick` in the background (launchd on macOS). */
   scheduler: Scheduler;
-  /** How this CLI was started: absolute paths of node and the script. */
-  invocation: { node: string; script: string };
+  /**
+   * How this CLI was started, resolved only when needed (install): node,
+   * its flags (e.g. --import) and the real path of the script.
+   */
+  invocation(): Invocation;
   /** Environment variables, e.g. PATH for the background agent. */
   env: Readonly<Record<string, string | undefined>>;
   stdout(text: string): void;
@@ -29,6 +32,12 @@ export interface CliContext {
   confirm(question: string): Promise<boolean>;
   /** True when a person is at the terminal and can answer questions. */
   interactive: boolean;
+}
+
+export interface Invocation {
+  node: string;
+  nodeArgs: string[];
+  script: string;
 }
 
 /** An expected failure: printed as is, without a stack trace, exit code 1. */

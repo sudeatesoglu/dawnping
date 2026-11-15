@@ -48,7 +48,11 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
     clock: { now: () => Date.parse('2026-11-15T06:00:00Z') },
     systemTimeZone: 'Europe/Istanbul',
     scheduler: createFakeScheduler(),
-    invocation: { node: '/usr/local/bin/node', script: '/usr/local/lib/dawnping/dist/cli.js' },
+    invocation: () => ({
+      node: '/usr/local/bin/node',
+      nodeArgs: [],
+      script: '/usr/local/lib/dawnping/dist/cli.js',
+    }),
     env: { PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
     stdout: (text) => {
       stdout += text;

@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Scheduler } from '../../core/scheduler.ts';
 import { createFakeScheduler, createTestContext } from '../test-context.ts';
+import { isTemporaryInstall } from './agent.ts';
 
 let t: Awaited<ReturnType<typeof createTestContext>>;
 let scheduler: ReturnType<typeof createFakeScheduler>;
@@ -36,16 +37,52 @@ describe('install', () => {
   it('refuses to install from a temporary npx cache', async () => {
     const e = await createTestContext({
       scheduler,
-      invocation: {
+      invocation: () => ({
         node: '/n',
+        nodeArgs: [],
         script: '/Users/u/.npm/_npx/abc123/node_modules/dawnping/dist/cli.js',
-      },
+      }),
     });
     try {
       const result = await e.run('install');
       expect(result.code).toBe(1);
       expect(result.stderr).toContain('Install it first: npm install --global dawnping');
       expect(scheduler.installed).toBeUndefined();
+    } finally {
+      await e.cleanup();
+    }
+  });
+
+  it('keeps node flags such as --import', async () => {
+    const e = await createTestContext({
+      scheduler,
+      invocation: () => ({ node: '/n', nodeArgs: ['--import', 'tsx'], script: '/src/cli.ts' }),
+    });
+    try {
+      await e.run('install');
+      expect(scheduler.installed?.programArguments).toEqual([
+        '/n',
+        '--import',
+        'tsx',
+        '/src/cli.ts',
+        'tick',
+      ]);
+    } finally {
+      await e.cleanup();
+    }
+  });
+
+  it('reports a program path that cannot be resolved', async () => {
+    const e = await createTestContext({
+      scheduler,
+      invocation: () => {
+        throw new Error("ENOENT: no such file or directory, realpath ''");
+      },
+    });
+    try {
+      expect((await e.run('install')).stderr).toBe(
+        "Could not find the dawnping program file: ENOENT: no such file or directory, realpath ''\n",
+      );
     } finally {
       await e.cleanup();
     }
@@ -81,6 +118,23 @@ describe('install', () => {
     } finally {
       await e.cleanup();
     }
+  });
+});
+
+describe('isTemporaryInstall', () => {
+  it.each([
+    '/Users/u/.npm/_npx/abc/node_modules/dawnping/dist/cli.js',
+    '/Users/u/Library/Caches/pnpm/dlx/xyz/node_modules/dawnping/dist/cli.js',
+    '/private/tmp/bunx-501-dawnping/node_modules/dawnping/dist/cli.js',
+    '/var/folders/x/T/xfs-123/node_modules/dawnping/dist/cli.js',
+  ])('detects %s', (script) => {
+    expect(isTemporaryInstall(script, '/var/folders/x/T')).toBe(true);
+  });
+
+  it('accepts a global install', () => {
+    expect(
+      isTemporaryInstall('/opt/homebrew/lib/node_modules/dawnping/dist/cli.js', '/var/folders/x/T'),
+    ).toBe(false);
   });
 });
 

@@ -33,6 +33,10 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
         ctx.stdout(
           `${name.padEnd(width)}  ${p.days.join(',').padEnd(27)}  ${p.work}  trigger ${p.trigger}\n`,
         );
+        for (const b of p.busy ?? []) {
+          const weight = b.weight === undefined ? '' : ` ×${b.weight}`;
+          ctx.stdout(`${''.padEnd(width)}  busy ${b.range}${weight}\n`);
+        }
       }
       const covered = new Set(entries.flatMap(([, p]) => p.days));
       const rest = WEEKDAYS.filter((day) => !covered.has(day));
@@ -85,6 +89,58 @@ export function registerProfileCommands(program: Command, ctx: CliContext): void
       const { [name]: _removed, ...profiles } = input.profiles;
       await validateAndSave(ctx, { ...input, profiles });
       ctx.stdout(`Removed profile "${name}"\n`);
+    });
+
+  const busy = profile
+    .command('busy')
+    .description('mark stretches of a working day that are busier (or quieter) than usual');
+
+  busy
+    .command('add <profile> <range>')
+    .description('add or replace a busy range, e.g. 14:00-17:00')
+    .option('--weight <n>', 'activity relative to an ordinary working stretch (1), e.g. 3')
+    .action(async (name: string, range: string, options: { weight?: string }) => {
+      const { input } = await loadOrFail(ctx);
+      const target = input.profiles[name];
+      if (!Object.hasOwn(input.profiles, name) || target === undefined) {
+        throw new CliError(`No profile named "${name}".`);
+      }
+      const weight = options.weight === undefined ? undefined : Number(options.weight);
+      if (weight !== undefined && !Number.isFinite(weight)) {
+        throw new CliError(`--weight must be a number, not ${JSON.stringify(options.weight)}.`);
+      }
+      const entry = weight === undefined ? { range } : { range, weight };
+      // Same range again replaces it, so the weight can be changed.
+      const others = (target.busy ?? []).filter((b) => b.range !== range);
+      await validateAndSave(ctx, {
+        ...input,
+        profiles: { ...input.profiles, [name]: { ...target, busy: [...others, entry] } },
+      });
+      ctx.stdout(
+        `Busy ${range}${weight === undefined ? '' : ` ×${weight}`} in profile "${name}"\n`,
+      );
+    });
+
+  busy
+    .command('remove <profile> <range>')
+    .description('remove a busy range')
+    .action(async (name: string, range: string) => {
+      const { input } = await loadOrFail(ctx);
+      const target = input.profiles[name];
+      if (!Object.hasOwn(input.profiles, name) || target === undefined) {
+        throw new CliError(`No profile named "${name}".`);
+      }
+      const remaining = (target.busy ?? []).filter((b) => b.range !== range);
+      if (remaining.length === (target.busy ?? []).length) {
+        throw new CliError(`Profile "${name}" has no busy range ${range}.`);
+      }
+      const { busy: _old, ...rest } = target;
+      const updated = remaining.length > 0 ? { ...rest, busy: remaining } : rest;
+      await validateAndSave(ctx, {
+        ...input,
+        profiles: { ...input.profiles, [name]: updated },
+      });
+      ctx.stdout(`Removed busy ${range} from profile "${name}"\n`);
     });
 }
 

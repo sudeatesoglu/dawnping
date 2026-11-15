@@ -152,3 +152,41 @@ describe('profile remove', () => {
     expect((await t.run('profile', 'remove', 'nope')).stderr).toBe('No profile named "nope".\n');
   });
 });
+
+describe('profile busy', () => {
+  it('adds, replaces and removes busy ranges', async () => {
+    await t.run('profile', 'busy', 'add', 'default', '14:00-17:00');
+    expect(
+      (await t.run('profile', 'busy', 'add', 'default', '14:00-17:00', '--weight', '3')).stdout,
+    ).toBe('Busy 14:00-17:00 ×3 in profile "default"\n');
+    expect((await savedProfiles()).default.busy).toEqual([{ range: '14:00-17:00', weight: 3 }]);
+    expect((await t.run('profile', 'list')).stdout).toContain('         busy 14:00-17:00 ×3\n');
+
+    expect((await t.run('profile', 'busy', 'remove', 'default', '14:00-17:00')).code).toBe(0);
+    expect((await savedProfiles()).default.busy).toBeUndefined();
+  });
+
+  it('validates the range and the weight', async () => {
+    expect((await t.run('profile', 'busy', 'add', 'default', '19:00-20:00')).stderr).toContain(
+      'profiles.default.busy.0.range: must lie inside the working hours 09:00-18:00',
+    );
+    expect(
+      (await t.run('profile', 'busy', 'add', 'default', '10:00-11:00', '--weight', 'lots')).stderr,
+    ).toBe('--weight must be a number, not "lots".\n');
+    expect(
+      (await t.run('profile', 'busy', 'add', 'default', '10:00-11:00', '--weight', '0')).stderr,
+    ).toContain('weight: must be greater than 0');
+  });
+
+  it('reports unknown profiles and ranges', async () => {
+    expect((await t.run('profile', 'busy', 'add', 'nope', '10:00-11:00')).stderr).toBe(
+      'No profile named "nope".\n',
+    );
+    expect((await t.run('profile', 'busy', 'remove', 'nope', '10:00-11:00')).stderr).toBe(
+      'No profile named "nope".\n',
+    );
+    expect((await t.run('profile', 'busy', 'remove', 'default', '10:00-11:00')).stderr).toBe(
+      'Profile "default" has no busy range 10:00-11:00.\n',
+    );
+  });
+});

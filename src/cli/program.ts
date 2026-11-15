@@ -3,6 +3,7 @@ import packageJson from '../../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agent.ts';
 import { registerConfigCommands } from './commands/config.ts';
 import { registerPingCommand } from './commands/ping.ts';
+import { registerPlanCommand } from './commands/plan.ts';
 import { registerProfileCommands } from './commands/profile.ts';
 import { registerSkipCommands } from './commands/skip.ts';
 import { type CliContext, CliError } from './context.ts';
@@ -24,6 +25,7 @@ export function createProgram(ctx: CliContext): Command {
   registerProfileCommands(program, ctx);
   registerSkipCommands(program, ctx);
   registerPingCommand(program, ctx);
+  registerPlanCommand(program, ctx);
   registerAgentCommands(program, ctx);
   return program;
 }

@@ -45,6 +45,17 @@ describe('activeWindowEnd', () => {
     expect(activeWindowEnd(answers, t0 + 6 * HOUR)).toBe(t0 + 5.5 * HOUR + WINDOW_MS);
   });
 
+  it('anchors the chain at a five-hour gap, not at the start of the history', () => {
+    // The history starts mid-window at t0+1h. A real window started at
+    // t0+5.5h after the one from t0 reset. Starting the chain at t0+1h would
+    // shift it; the 5-hour gap before t0+12h anchors it exactly.
+    const answers = [t0 + HOUR, t0 + 5.5 * HOUR, t0 + 6.5 * HOUR, t0 + 12 * HOUR];
+    // Unanchored chain: t0+1h → reset t0+6h, t0+6.5h → reset t0+11.5h.
+    expect(activeWindowEnd(answers.slice(0, 3), t0 + 11 * HOUR)).toBe(t0 + 11.5 * HOUR);
+    // After the gap the chain is exact: t0+12h starts a window until t0+17h.
+    expect(activeWindowEnd(answers, t0 + 13 * HOUR)).toBe(t0 + 17 * HOUR);
+  });
+
   it('knows a window that has already reset', () => {
     // The last answer was 4 hours ago, but its window started 6 hours ago.
     expect(activeWindowEnd([t0, t0 + 2 * HOUR], t0 + 6 * HOUR)).toBeUndefined();
@@ -73,6 +84,7 @@ describe('decideTick', () => {
       date: '2026-11-16',
       model: 'haiku',
       reason: 'ping time',
+      attempt: 1,
     });
   });
 
@@ -88,9 +100,10 @@ describe('decideTick', () => {
   });
 
   it('pings once a day', () => {
-    expect(decide(monday('07:00'), { state: ping('verified') }).reason).toBe(
-      'already pinged today at 06:30',
-    );
+    expect(decide(monday('07:00'), { state: ping('verified') })).toEqual({
+      action: 'wait',
+      reason: 'already pinged today at 06:30',
+    });
     // An unverified ping was still sent; it is not repeated.
     expect(decide(monday('07:00'), { state: ping('unverified') }).action).toBe('wait');
     // Yesterday's ping does not count.
@@ -101,11 +114,37 @@ describe('decideTick', () => {
     expect(decide(monday('07:00'), { state: yesterday }).action).toBe('ping');
   });
 
-  it('retries a failed ping a few times only', () => {
-    expect(decide(monday('06:35'), { state: ping('timeout', 1) }).action).toBe('ping');
-    expect(decide(monday('06:45'), { state: ping('failed', MAX_ATTEMPTS_PER_DAY) })).toEqual({
+  it('retries failed or interrupted pings with growing gaps', () => {
+    // The 06:30 attempt failed: next try 15 minutes later.
+    expect(decide(monday('06:40'), { state: ping('timeout', 1) })).toEqual({
       action: 'wait',
-      reason: 'gave up after 3 failed pings today',
+      reason: 'retrying at 06:45',
+    });
+    expect(decide(monday('06:45'), { state: ping('timeout', 1) })).toMatchObject({
+      action: 'ping',
+      attempt: 2,
+    });
+    // After the second failure the gap is 30 minutes.
+    expect(decide(monday('06:59'), { state: ping('failed', 2) })).toMatchObject({ action: 'wait' });
+    // A run that died after recording "pending" counts as an attempt.
+    expect(decide(monday('06:35'), { state: ping('pending', 1) })).toMatchObject({
+      action: 'wait',
+    });
+  });
+
+  it('gives up after the last attempt of the day', () => {
+    expect(decide(monday('15:00'), { state: ping('failed', MAX_ATTEMPTS_PER_DAY) })).toEqual({
+      action: 'wait',
+      reason: `gave up after ${MAX_ATTEMPTS_PER_DAY} failed pings today`,
+    });
+  });
+
+  it('asks for the window check only when everything else says ping', () => {
+    expect(decide(monday('06:30'), { activeWindowEnd: 'unchecked' })).toEqual({
+      action: 'check-window',
+    });
+    expect(decide(monday('06:00'), { activeWindowEnd: 'unchecked' })).toMatchObject({
+      action: 'wait',
     });
   });
 

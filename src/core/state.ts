@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PING_OUTCOMES } from './pinger.ts';
 import { isIsoDate } from './time.ts';
 
 /**
@@ -10,7 +11,12 @@ const PingRecord = z.strictObject({
   date: z.string().refine(isIsoDate),
   /** When the last attempt started, epoch ms. */
   at: z.number(),
-  outcome: z.enum(['verified', 'unverified', 'not-found', 'not-logged-in', 'timeout', 'failed']),
+  /**
+   * "pending" is written just before pinging: if the run dies before it
+   * records the outcome, the attempt still counts and is not repeated
+   * every five minutes.
+   */
+  outcome: z.enum([...PING_OUTCOMES, 'pending']),
   /** Attempts on this date, so failures are retried a few times only. */
   attempts: z.number().int().min(1),
 });

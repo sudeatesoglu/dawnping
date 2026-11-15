@@ -10,6 +10,8 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
+        // Test support, not product code.
+        'src/cli/test-context.ts',
         // Composition root: only wires modules together. Keep logic out of it
         // so everything else stays unit-tested.
         'src/cli.ts',

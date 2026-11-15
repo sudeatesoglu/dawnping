@@ -55,20 +55,22 @@ export function simulate(demand: DemandProfile, trigger: number): Plan {
 }
 
 /**
- * Lexicographic comparison of two plans; negative if `a` is better.
- *   1. more windows touching active time: each one is a fresh budget
- *   2. a lighter busiest window: the user is least likely to hit a limit
- *   3. a more even split (sum of squared loads)
- *   4. a later ping: closer to the day, less likely the Mac is asleep
+ * Compares two plans; negative if `a` is better (ADR-0005).
+ *
+ *   1. Lower sum of squared window loads. This is the same as more usable
+ *      work on average over every possible window budget B: a window gives
+ *      min(load, B), whose average over B in [0, M] is load − load²/(2M),
+ *      and the day's total load does not depend on the ping time. It
+ *      rewards splitting load into meaningful windows; a five-minute sliver
+ *      earns almost nothing.
+ *   2. A lighter busiest window.
+ *   3. A later ping: closer to the day, less likely the Mac is asleep.
  */
 export function comparePlans(a: Plan, b: Plan): number {
   const peak = (p: Plan) => Math.max(0, ...p.windows.map((w) => w.load));
   const squares = (p: Plan) => p.windows.reduce((sum, w) => sum + w.load ** 2, 0);
   return (
-    b.windows.length - a.windows.length ||
-    compareLoads(peak(a), peak(b)) ||
-    compareLoads(squares(a), squares(b)) ||
-    b.trigger - a.trigger
+    compareLoads(squares(a), squares(b)) || compareLoads(peak(a), peak(b)) || b.trigger - a.trigger
   );
 }
 

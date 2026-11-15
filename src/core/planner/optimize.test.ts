@@ -4,7 +4,7 @@ import { manualDemand, SLOT_MINUTES, SLOTS_PER_DAY } from './demand.ts';
 import { comparePlans, optimizeTrigger, simulate } from './optimize.ts';
 
 const at = (slot: number) => formatTime(slot * SLOT_MINUTES);
-const hours = (slots: number) => (slots * SLOT_MINUTES) / 60;
+const hours = (slots: number) => Number(((slots * SLOT_MINUTES) / 60).toFixed(2));
 
 /** The plan as "trigger: window loads in hours", for readable expectations. */
 function summary(work: string, busy: { range: string; weight?: number }[] = []) {
@@ -21,9 +21,11 @@ describe('optimizeTrigger', () => {
     ['12:00-17:00', [], '09:30: 2.5 + 2.5'],
     ['12:00-17:00', [{ range: '15:00-17:00' }], '10:15: 3.5 + 3.5'],
     ['10:00-15:00', [], '07:30: 2.5 + 2.5'],
-    // A busy morning: the first reset lands inside the busy stretch and splits
-    // it between two windows (06:30 would leave 6 in the second window).
-    ['10:00-18:00', [{ range: '10:00-12:00', weight: 3 }], '06:45: 5.25 + 5.5 + 1.25'],
+    // A busy morning stays in the first window, with an even split after it.
+    ['10:00-18:00', [{ range: '10:00-12:00', weight: 3 }], '06:30: 4.5 + 6 + 1.5'],
+    // A busy afternoon (#28): the first window gets 40 minutes of real work,
+    // and the busy stretch is split between the second and the third.
+    ['10:00-18:00', [{ range: '14:00-17:00' }], '05:40: 0.67 + 6.67 + 3.67'],
   ])('%s with %j → %s', (work, busy, expected) => {
     expect(summary(work, busy)).toBe(expected);
   });
@@ -74,12 +76,23 @@ describe('comparePlans', () => {
     expect(comparePlans(a, b)).toBeGreaterThan(0);
   });
 
-  it('prefers more windows over a lighter peak', () => {
+  it('prefers a split into meaningful windows over one window', () => {
     const day = manualDemand({ work: '12:00-17:00' });
-    const two = simulate(day, 9 * 12);
+    const two = simulate(day, 9 * 12 + 6);
     const one = simulate(day, 12 * 12);
     expect(two.windows).toHaveLength(2);
     expect(one.windows).toHaveLength(1);
     expect(comparePlans(two, one)).toBeLessThan(0);
+  });
+
+  it('gives a five-minute sliver window almost no credit', () => {
+    // #28: 05:05 makes a third window with 5 minutes of work, which is
+    // practically the same as not pinging; 05:45 is better.
+    const day = manualDemand({ work: '10:00-18:00', busy: [{ range: '14:00-17:00' }] });
+    const sliver = simulate(day, 5 * 12 + 1);
+    const balanced = simulate(day, 5 * 12 + 9);
+    expect(sliver.windows).toHaveLength(3);
+    expect(sliver.windows[0]?.activeSlots).toBe(1);
+    expect(comparePlans(balanced, sliver)).toBeLessThan(0);
   });
 });

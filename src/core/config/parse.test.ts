@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig, parseConfigText, serializeConfig } from './parse.ts';
-import { DEFAULT_CONFIG } from './schema.ts';
+import { type ConfigInput, defaultConfigInput } from './schema.ts';
 
-const minimal = {
+const minimal: ConfigInput = {
   version: 1,
   profiles: { default: { days: ['mon'], work: '10:00-18:00', trigger: 'auto' } },
 };
@@ -15,13 +15,15 @@ function errorsOf(value: unknown): string[] {
 }
 
 describe('parseConfig', () => {
-  it('accepts the defaults', () => {
-    expect(parseConfig(DEFAULT_CONFIG)).toEqual({ ok: true, config: DEFAULT_CONFIG });
+  it('accepts the default config', () => {
+    expect(parseConfig(defaultConfigInput()).ok).toBe(true);
   });
 
-  it('fills in defaults for omitted sections', () => {
+  it('fills in defaults for the tool but keeps the input as given', () => {
     const result = parseConfig(minimal);
-    expect(result.ok && result.config).toMatchObject({ ping: { model: 'haiku' }, skip: [] });
+    if (!result.ok) throw new Error('expected a valid config');
+    expect(result.config).toMatchObject({ ping: { model: 'haiku' }, skip: [] });
+    expect(result.input).toEqual(minimal);
   });
 
   it('names the key and the problem', () => {
@@ -75,10 +77,20 @@ describe('parseConfig', () => {
   });
 
   it('validates profile names', () => {
-    const config = { ...minimal, profiles: { 'Late Fridays': minimal.profiles.default } };
+    const config = { ...minimal, profiles: { 'Late Fridays': minimal.profiles['default'] } };
     expect(errorsOf(config)).toEqual([
       'profiles.Late Fridays: name must start with a letter and use only a-z, 0-9 and "-" (max 32)',
     ]);
+  });
+
+  it('does not let a "__proto__" profile disappear silently', () => {
+    const result = parseConfigText(
+      '{"version":1,"profiles":{"__proto__":{"days":["mon"],"work":"09:00-18:00","trigger":"auto"}}}',
+    );
+    expect(result).toEqual({
+      ok: false,
+      errors: ['profiles.__proto__: "__proto__" is not allowed as a key'],
+    });
   });
 
   it('validates skip dates', () => {
@@ -105,9 +117,12 @@ describe('parseConfigText', () => {
 });
 
 describe('serializeConfig', () => {
-  it('round-trips through parseConfigText', () => {
-    const text = serializeConfig(DEFAULT_CONFIG);
+  it('round-trips through parseConfigText without adding defaults', () => {
+    const text = serializeConfig(minimal);
     expect(text.endsWith('}\n')).toBe(true);
-    expect(parseConfigText(text)).toEqual({ ok: true, config: DEFAULT_CONFIG });
+    const result = parseConfigText(text);
+    if (!result.ok) throw new Error('expected a valid config');
+    expect(result.input).toEqual(minimal);
+    expect(serializeConfig(result.input)).toBe(text);
   });
 });

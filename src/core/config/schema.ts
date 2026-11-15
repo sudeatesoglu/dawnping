@@ -16,8 +16,13 @@ const WorkRange = z.string().refine((value) => parseWorkRange(value) !== undefin
 
 const IsoDate = z.string().refine(isIsoDate, { error: 'must be a calendar date like 2026-12-31' });
 
-/** Profile names are used as config keys and CLI arguments. */
-const PROFILE_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+/**
+ * Profile names are used as config keys and CLI arguments. Validating them
+ * as record keys also stops names like "__proto__" before they are assigned.
+ */
+const ProfileName = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, {
+  error: 'name must start with a letter and use only a-z, 0-9 and "-" (max 32)',
+});
 
 export const Profile = z.strictObject({
   days: z.array(WeekdaySchema).min(1, { error: 'must list at least one day' }),
@@ -46,25 +51,16 @@ export const ConfigSchema = z
     ping: z
       .strictObject({ model: z.string().min(1, { error: 'must not be empty' }) })
       .default({ model: DEFAULT_PING_MODEL }),
-    // Names are checked below: a key schema here would only report "Invalid key in record".
-    profiles: z.record(z.string(), Profile),
+    profiles: z.record(ProfileName, Profile),
     /** Dates (YYYY-MM-DD, in the configured time zone) without a ping. */
     skip: z.array(IsoDate).default([]),
   })
   .superRefine((config, ctx) => {
-    // Cross-field checks. They run once every field is valid, so a file
-    // with field errors reports those first.
-    // Profile names are CLI arguments. Each weekday may belong to at most
-    // one profile, so the profile for a day is never ambiguous.
+    // Each weekday may belong to at most one profile, so the profile for a
+    // day is never ambiguous. This can run even when other fields are
+    // invalid, so it must not assume valid data.
     const owner = new Map<Weekday, string>();
     for (const [name, profile] of Object.entries(config.profiles)) {
-      if (!PROFILE_NAME.test(name)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['profiles', name],
-          message: 'name must start with a letter and use only a-z, 0-9 and "-" (max 32)',
-        });
-      }
       for (const day of profile.days) {
         const other = owner.get(day);
         if (other !== undefined && other !== name) {
@@ -79,15 +75,22 @@ export const ConfigSchema = z
     }
   });
 
-/** A validated configuration with defaults applied. */
+/** A validated configuration with defaults applied: what the tool reads. */
 export type Config = z.output<typeof ConfigSchema>;
 
-/** Used when no config file exists yet. */
-export const DEFAULT_CONFIG: Config = {
-  version: 1,
-  ping: { model: DEFAULT_PING_MODEL },
-  profiles: {
-    default: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], work: '09:00-18:00', trigger: 'auto' },
-  },
-  skip: [],
-};
+/**
+ * The configuration as written in the file, without defaults filled in:
+ * what the CLI edits and saves, so a round trip keeps the user's file as
+ * it was (no added defaults, same key order).
+ */
+export type ConfigInput = z.input<typeof ConfigSchema>;
+
+/** A fresh copy of the config used when no file exists yet. */
+export function defaultConfigInput(): ConfigInput {
+  return {
+    version: 1,
+    profiles: {
+      default: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], work: '09:00-18:00', trigger: 'auto' },
+    },
+  };
+}

@@ -43,10 +43,16 @@ describe('isIsoDate', () => {
 });
 
 describe('isValidTimeZone', () => {
-  it('accepts IANA names and rejects others', () => {
-    expect(isValidTimeZone('Europe/Istanbul')).toBe(true);
-    expect(isValidTimeZone('UTC')).toBe(true);
-    expect(isValidTimeZone('Mars/Olympus')).toBe(false);
+  it.each(['Europe/Istanbul', 'America/Argentina/Buenos_Aires', 'Etc/GMT+3', 'UTC'])(
+    'accepts %s',
+    (value) => {
+      expect(isValidTimeZone(value)).toBe(true);
+    },
+  );
+
+  // Offsets and abbreviations have no daylight saving rules.
+  it.each(['Mars/Olympus', '+03:00', 'EST', 'europe/istanbul', ''])('rejects %j', (value) => {
+    expect(isValidTimeZone(value)).toBe(false);
   });
 });
 

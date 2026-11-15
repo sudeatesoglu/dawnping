@@ -27,7 +27,15 @@ export function isIsoDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
 }
 
+/**
+ * True for an IANA zone name such as Europe/Istanbul, or UTC.
+ *
+ * Intl also accepts offsets ("+03:00"), abbreviations ("EST") and
+ * lowercase names. Offsets and most abbreviations have no daylight saving
+ * rules, so they would put work hours off by an hour for half the year.
+ */
 export function isValidTimeZone(value: string): boolean {
+  if (value !== 'UTC' && !/^[A-Z][A-Za-z_-]*(\/[A-Za-z0-9_+-]+)+$/.test(value)) return false;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value });
     return true;

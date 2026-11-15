@@ -24,7 +24,13 @@ function pinger(answer: CommandResult | Error) {
   return createClaudePinger({
     directory: join(dir, 'ping'),
     timeoutMs: 30_000,
-    env: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-test' },
+    env: {
+      PATH: '/usr/bin',
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_AUTH_TOKEN: 'token',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_USE_VERTEX: '1',
+    },
     now: () => {
       time += 1_500;
       return time;
@@ -45,7 +51,7 @@ describe('createClaudePinger', () => {
       {
         program: 'claude',
         args: ['-p', '--model', 'haiku', PING_PROMPT],
-        // The API key is removed so the ping uses the subscription.
+        // Billing overrides are removed so the ping uses the subscription.
         options: { cwd: join(dir, 'ping'), timeoutMs: 30_000, env: { PATH: '/usr/bin' } },
       },
     ]);

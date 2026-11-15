@@ -17,15 +17,27 @@ export interface ClaudePingerOptions {
 const NOT_LOGGED_IN = /not logged in|please run \/login|invalid api key/i;
 
 /**
- * With an API key in the environment, claude can bill the API instead of
- * the subscription, and then the ping does not start the usage window
- * (ADR-0003). The ping always uses the logged-in subscription.
+ * Variables that make claude bill something other than the logged-in
+ * subscription: an API key, a bearer token for a proxy, or AWS Bedrock /
+ * Google Vertex. A ping billed that way does not start the subscription's
+ * usage window (ADR-0003), so the ping always runs without them. The
+ * user's own `claude` sessions are not affected.
  */
+export const NON_SUBSCRIPTION_VARIABLES = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+] as const;
+
 function subscriptionEnvironment(
   env: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> {
-  const { ANTHROPIC_API_KEY: _apiKey, ...rest } = env;
-  return rest;
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([name]) => !(NON_SUBSCRIPTION_VARIABLES as readonly string[]).includes(name),
+    ),
+  );
 }
 
 function firstLine(text: string): string {

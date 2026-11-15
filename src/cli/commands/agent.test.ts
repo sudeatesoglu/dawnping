@@ -151,12 +151,3 @@ describe('uninstall', () => {
     expect((await t.run('uninstall')).stdout).toBe('Not installed.\n');
   });
 });
-
-describe('tick', () => {
-  it('is hidden from help and only records that it ran for now', async () => {
-    expect((await t.run('--help')).stdout).not.toContain('tick');
-    expect((await t.run('tick')).stdout).toBe(
-      '2026-11-15T06:00:00.000Z tick: no planner yet, nothing to do\n',
-    );
-  });
-});

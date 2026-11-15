@@ -6,6 +6,7 @@ import { registerPingCommand } from './commands/ping.ts';
 import { registerPlanCommand } from './commands/plan.ts';
 import { registerProfileCommands } from './commands/profile.ts';
 import { registerSkipCommands } from './commands/skip.ts';
+import { registerTickCommand } from './commands/tick.ts';
 import { type CliContext, CliError } from './context.ts';
 
 /** Builds the command-line interface around the given context. */
@@ -27,6 +28,7 @@ export function createProgram(ctx: CliContext): Command {
   registerPingCommand(program, ctx);
   registerPlanCommand(program, ctx);
   registerAgentCommands(program, ctx);
+  registerTickCommand(program, ctx);
   return program;
 }
 

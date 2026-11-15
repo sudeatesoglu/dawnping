@@ -2,6 +2,7 @@ import { Command, CommanderError } from 'commander';
 import packageJson from '../../package.json' with { type: 'json' };
 import { registerConfigCommands } from './commands/config.ts';
 import { registerProfileCommands } from './commands/profile.ts';
+import { registerSkipCommands } from './commands/skip.ts';
 import { type CliContext, CliError } from './context.ts';
 
 /** Builds the command-line interface around the given context. */
@@ -19,6 +20,7 @@ export function createProgram(ctx: CliContext): Command {
 
   registerConfigCommands(program, ctx);
   registerProfileCommands(program, ctx);
+  registerSkipCommands(program, ctx);
   return program;
 }
 

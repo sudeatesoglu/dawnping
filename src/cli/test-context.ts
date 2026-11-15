@@ -20,6 +20,9 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
   let stderr = '';
   const ctx: CliContext = {
     paths: { configFile: join(dir, 'config', 'config.json'), stateDir: join(dir, 'state') },
+    // Sunday 2026-11-15, 09:00 in Istanbul.
+    clock: { now: () => Date.parse('2026-11-15T06:00:00Z') },
+    systemTimeZone: 'Europe/Istanbul',
     stdout: (text) => {
       stdout += text;
     },

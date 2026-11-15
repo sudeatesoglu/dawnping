@@ -1,5 +1,6 @@
 import type { Paths } from '../adapters/paths.ts';
 import type { Clock } from '../core/clock.ts';
+import type { Pinger } from '../core/pinger.ts';
 import type { Scheduler } from '../core/scheduler.ts';
 
 /**
@@ -15,6 +16,8 @@ export interface CliContext {
   clock: Clock;
   /** The system's IANA time zone, used when the config sets none. */
   systemTimeZone: string;
+  /** Sends the message that starts the usage window. */
+  pinger: Pinger;
   /** Runs `dawnping tick` in the background (launchd on macOS). */
   scheduler: Scheduler;
   /**

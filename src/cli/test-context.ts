@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Pinger, PingResult } from '../core/pinger.ts';
 import type { AgentSpec, Scheduler } from '../core/scheduler.ts';
 import type { CliContext } from './context.ts';
 import { runCli } from './program.ts';
@@ -30,6 +31,23 @@ export function createFakeScheduler(): Scheduler & { installed: AgentSpec | unde
   };
 }
 
+/** A pinger that records the models it was asked to ping. */
+export function createFakePinger(
+  result: PingResult = { ok: true, durationMs: 2100 },
+): Pinger & { pinged: string[] } {
+  return {
+    pinged: [],
+    describe: (model) => ({
+      command: ['claude', '-p', '--model', model, 'Reply with the single word: ok'],
+      directory: '/state/ping',
+    }),
+    async ping(model) {
+      this.pinged.push(model);
+      return result;
+    },
+  };
+}
+
 /**
  * A CLI context for tests: a temporary config directory, captured output
  * and replaceable terminal interactions. Never touches the real home.
@@ -47,6 +65,7 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
     // Sunday 2026-11-15, 09:00 in Istanbul.
     clock: { now: () => Date.parse('2026-11-15T06:00:00Z') },
     systemTimeZone: 'Europe/Istanbul',
+    pinger: createFakePinger(),
     scheduler: createFakeScheduler(),
     invocation: () => ({
       node: '/usr/local/bin/node',

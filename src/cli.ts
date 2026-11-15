@@ -3,7 +3,9 @@
 // Keep logic out of this file; it is excluded from unit-test coverage.
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { resolvePaths } from './adapters/paths.ts';
+import { createClaudePinger } from './adapters/pinger/claude-cli.ts';
 import { runCommand } from './adapters/process.ts';
 import { createLaunchdScheduler } from './adapters/scheduler/launchd.ts';
 import { createUnsupportedScheduler } from './adapters/scheduler/unsupported.ts';
@@ -17,6 +19,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   paths,
   clock: systemClock,
   systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  pinger: createClaudePinger({ directory: join(paths.stateDir, 'ping'), run: runCommand }),
   scheduler:
     process.platform === 'darwin'
       ? createLaunchdScheduler({

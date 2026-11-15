@@ -22,16 +22,21 @@ export async function readTextFile(path: string): Promise<string | undefined> {
  * If the target is a symlink (e.g. into a dotfiles repository), the file it
  * points to is replaced and the link is kept.
  *
- * Files are private to the user (0600, new directories 0700): they reveal
- * when the user works.
+ * Files are private to the user by default (0600, new directories 0700):
+ * they reveal when the user works. Files other programs must read, such as
+ * a LaunchAgent, can pass a different mode.
  */
-export async function writeFileAtomic(path: string, content: string): Promise<void> {
+export async function writeFileAtomic(
+  path: string,
+  content: string,
+  { mode = 0o600 }: { mode?: number } = {},
+): Promise<void> {
   const target = await resolveTarget(path);
   const directory = dirname(target);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const temporary = `${target}.${randomUUID()}.tmp`;
   try {
-    const handle = await open(temporary, 'wx', 0o600);
+    const handle = await open(temporary, 'wx', mode);
     try {
       await handle.writeFile(content, 'utf8');
       await handle.sync();

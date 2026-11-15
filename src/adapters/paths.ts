@@ -5,6 +5,8 @@ export interface Paths {
   configFile: string;
   /** Directory for state the tool writes itself (last ping, logs). */
   stateDir: string;
+  /** Where per-user launchd agents live on macOS. */
+  launchAgentsDir: string;
 }
 
 /**
@@ -26,5 +28,6 @@ export function resolvePaths(
   return {
     configFile: join(base('XDG_CONFIG_HOME', '.config'), 'dawnping', 'config.json'),
     stateDir: join(base('XDG_STATE_HOME', '.local/state'), 'dawnping'),
+    launchAgentsDir: join(home, 'Library', 'LaunchAgents'),
   };
 }

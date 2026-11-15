@@ -6,6 +6,7 @@ describe('resolvePaths', () => {
     expect(resolvePaths({}, '/home/u')).toEqual({
       configFile: '/home/u/.config/dawnping/config.json',
       stateDir: '/home/u/.local/state/dawnping',
+      launchAgentsDir: '/home/u/Library/LaunchAgents',
     });
   });
 
@@ -13,6 +14,7 @@ describe('resolvePaths', () => {
     expect(resolvePaths({ XDG_CONFIG_HOME: '/cfg', XDG_STATE_HOME: '/state' }, '/home/u')).toEqual({
       configFile: '/cfg/dawnping/config.json',
       stateDir: '/state/dawnping',
+      launchAgentsDir: '/home/u/Library/LaunchAgents',
     });
   });
 
@@ -20,6 +22,7 @@ describe('resolvePaths', () => {
     expect(resolvePaths({ XDG_CONFIG_HOME: 'cfg', XDG_STATE_HOME: '' }, '/home/u')).toEqual({
       configFile: '/home/u/.config/dawnping/config.json',
       stateDir: '/home/u/.local/state/dawnping',
+      launchAgentsDir: '/home/u/Library/LaunchAgents',
     });
   });
 });

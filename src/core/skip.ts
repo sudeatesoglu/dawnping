@@ -28,14 +28,16 @@ export function rangeLength(from: string, to: string): number {
 
 /** Every date from `from` to `to`, both included. */
 export function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  for (let date = from; date <= to; date = addDays(date, 1)) dates.push(date);
-  return dates;
+  const start = Date.parse(`${from}T00:00:00Z`);
+  return Array.from({ length: rangeLength(from, to) }, (_, i) =>
+    new Date(start + i * DAY_MS).toISOString().slice(0, 10),
+  );
 }
 
 /**
  * The skip list after adding dates: sorted, without duplicates and without
- * dates before `today`, which can never matter again.
+ * dates before `today`, which can never matter again (including past dates
+ * written by hand).
  */
 export function withSkips(
   current: readonly string[],

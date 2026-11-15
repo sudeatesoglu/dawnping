@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isIsoDate, isValidTimeZone, parseTime, parseWorkRange, toLocalTime } from './time.ts';
+import {
+  isIsoDate,
+  isValidTimeZone,
+  parseTime,
+  parseWorkRange,
+  toLocalTime,
+  weekdayOf,
+} from './time.ts';
 
 describe('parseTime', () => {
   it.each([
@@ -53,6 +60,17 @@ describe('isValidTimeZone', () => {
   // Offsets and abbreviations have no daylight saving rules.
   it.each(['Mars/Olympus', '+03:00', 'EST', 'europe/istanbul', ''])('rejects %j', (value) => {
     expect(isValidTimeZone(value)).toBe(false);
+  });
+});
+
+describe('weekdayOf', () => {
+  it.each([
+    ['2026-11-15', 'sun'],
+    ['2026-11-16', 'mon'],
+    ['2026-11-21', 'sat'],
+    ['2028-02-29', 'tue'],
+  ])('%s is %s', (date, weekday) => {
+    expect(weekdayOf(date)).toBe(weekday);
   });
 });
 

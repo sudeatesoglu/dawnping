@@ -44,6 +44,19 @@ export function isValidTimeZone(value: string): boolean {
   }
 }
 
+/**
+ * The weekday of a calendar date (YYYY-MM-DD). A date's weekday does not
+ * depend on any time zone, so none is involved: converting the date to an
+ * instant first would shift it to another day east of UTC+12.
+ */
+export function weekdayOf(date: string): Weekday {
+  // getUTCDay: 0 = Sunday.
+  const index = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const weekday = WEEKDAYS[index];
+  if (weekday === undefined) throw new Error(`Not a date: ${date}`);
+  return weekday;
+}
+
 /** The calendar view of an instant in a given time zone. */
 export interface LocalTime {
   /** YYYY-MM-DD */

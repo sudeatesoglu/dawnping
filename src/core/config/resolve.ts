@@ -1,11 +1,31 @@
-import { type LocalTime, toLocalTime } from '../time.ts';
+import { isValidTimeZone, type LocalTime, toLocalTime, type Weekday } from '../time.ts';
 import type { Config, Profile } from './schema.ts';
+
+export type NamedProfile = Profile & { name: string };
 
 export interface Day extends LocalTime {
   /** The profile that owns this weekday, or undefined on a rest day. */
-  profile: (Profile & { name: string }) | undefined;
+  profile: NamedProfile | undefined;
   /** True if the date is in the skip list. */
   skipped: boolean;
+}
+
+/** The profile that owns a weekday, or undefined on a rest day. */
+export function profileFor(config: Config, weekday: Weekday): NamedProfile | undefined {
+  const entry = Object.entries(config.profiles).find(([, profile]) =>
+    profile.days.includes(weekday),
+  );
+  return entry === undefined ? undefined : { name: entry[0], ...entry[1] };
+}
+
+/**
+ * The time zone dawnping works in: the configured one, else the system's
+ * if it is a proper IANA zone. Undefined means neither is usable and the
+ * user has to set one.
+ */
+export function effectiveTimeZone(config: Config, systemTimeZone: string): string | undefined {
+  if (config.timezone !== undefined) return config.timezone;
+  return isValidTimeZone(systemTimeZone) ? systemTimeZone : undefined;
 }
 
 /**
@@ -18,12 +38,9 @@ export interface Day extends LocalTime {
  */
 export function resolveDay(config: Config, instant: number, timeZone: string): Day {
   const local = toLocalTime(instant, timeZone);
-  const entry = Object.entries(config.profiles).find(([, profile]) =>
-    profile.days.includes(local.weekday),
-  );
   return {
     ...local,
-    profile: entry === undefined ? undefined : { name: entry[0], ...entry[1] },
+    profile: profileFor(config, local.weekday),
     skipped: config.skip.includes(local.date),
   };
 }

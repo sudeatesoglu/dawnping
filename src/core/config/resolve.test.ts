@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDay } from './resolve.ts';
+import { effectiveTimeZone, profileFor, resolveDay } from './resolve.ts';
 import type { Config } from './schema.ts';
 
 const config: Config = {
@@ -13,6 +13,22 @@ const config: Config = {
 };
 
 const IST = 'Europe/Istanbul';
+
+describe('profileFor', () => {
+  it('finds the owner of a weekday', () => {
+    expect(profileFor(config, 'fri')?.name).toBe('friday');
+    expect(profileFor(config, 'sun')).toBeUndefined();
+  });
+});
+
+describe('effectiveTimeZone', () => {
+  it('prefers the configured zone, then a usable system zone', () => {
+    expect(effectiveTimeZone({ ...config, timezone: 'UTC' }, 'Europe/Berlin')).toBe('UTC');
+    expect(effectiveTimeZone(config, 'Europe/Berlin')).toBe('Europe/Berlin');
+    expect(effectiveTimeZone(config, 'Etc/Unknown')).toBeUndefined();
+    expect(effectiveTimeZone(config, '+03:00')).toBeUndefined();
+  });
+});
 
 describe('resolveDay', () => {
   it('picks the profile that owns the local weekday', () => {

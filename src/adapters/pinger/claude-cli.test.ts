@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PING_PROMPT } from '../../core/pinger.ts';
+import { projectFolderName } from '../../core/session-logs.ts';
 import type { CommandOptions, CommandResult } from '../process.ts';
-import { createClaudePinger } from './claude-cli.ts';
+import { createClaudePinger, subscriptionEnvironment } from './claude-cli.ts';
 
 let dir: string;
 let calls: { program: string; args: readonly string[]; options: CommandOptions | undefined }[];
@@ -24,7 +25,13 @@ function pinger(answer: CommandResult | Error) {
   return createClaudePinger({
     directory: join(dir, 'ping'),
     timeoutMs: 30_000,
-    env: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-test' },
+    env: {
+      PATH: '/usr/bin',
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_AUTH_TOKEN: 'token',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_USE_VERTEX: '1',
+    },
     now: () => {
       time += 1_500;
       return time;
@@ -40,12 +47,17 @@ function pinger(answer: CommandResult | Error) {
 describe('createClaudePinger', () => {
   it('runs claude -p from the fixed ping directory', async () => {
     const result = await pinger({ code: 0, stdout: 'ok\n', stderr: '' }).ping('haiku');
-    expect(result).toEqual({ ok: true, durationMs: 1_500 });
+    expect(result).toEqual({
+      ok: true,
+      durationMs: 1_500,
+      // Named after the real path: macOS temp folders live under /private.
+      logFolder: projectFolderName(await realpath(join(dir, 'ping'))),
+    });
     expect(calls).toEqual([
       {
         program: 'claude',
         args: ['-p', '--model', 'haiku', PING_PROMPT],
-        // The API key is removed so the ping uses the subscription.
+        // Billing overrides are removed so the ping uses the subscription.
         options: { cwd: join(dir, 'ping'), timeoutMs: 30_000, env: { PATH: '/usr/bin' } },
       },
     ]);
@@ -124,5 +136,27 @@ describe('createClaudePinger', () => {
     expect(await pinger({ code: 3, stdout: '', stderr: '' }).ping('haiku')).toMatchObject({
       detail: 'exit code 3',
     });
+  });
+});
+
+describe('subscriptionEnvironment', () => {
+  it('removes everything that could bill something other than the subscription', () => {
+    expect(
+      subscriptionEnvironment({
+        PATH: '/usr/bin',
+        HOME: '/Users/u',
+        ANTHROPIC_API_KEY: 'sk',
+        ANTHROPIC_AUTH_TOKEN: 't',
+        ANTHROPIC_BASE_URL: 'https://proxy.example',
+        CLAUDE_CODE_USE_BEDROCK: '1',
+        CLAUDE_CODE_USE_VERTEX: '1',
+        CLAUDE_CODE_USE_SOMETHING_NEW: '1',
+        CLAUDE_CONFIG_DIR: '/Users/u/.claude-alt',
+      }),
+    ).toEqual({ PATH: '/usr/bin', HOME: '/Users/u', CLAUDE_CONFIG_DIR: '/Users/u/.claude-alt' });
+  });
+
+  it('drops a relative CLAUDE_CONFIG_DIR, which would resolve against the ping folder', () => {
+    expect(subscriptionEnvironment({ CLAUDE_CONFIG_DIR: '.claude-alt' })).toEqual({});
   });
 });

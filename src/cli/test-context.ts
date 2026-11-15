@@ -1,8 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Notifier } from '../core/notifier.ts';
 import { PING_PROMPT, type Pinger, type PingResult } from '../core/pinger.ts';
 import type { AgentSpec, Scheduler } from '../core/scheduler.ts';
+import type { LogEntry, SessionLogs } from '../core/session-logs.ts';
 import type { CliContext } from './context.ts';
 import { runCli } from './program.ts';
 
@@ -31,9 +33,11 @@ export function createFakeScheduler(): Scheduler & { installed: AgentSpec | unde
   };
 }
 
+export const FAKE_PING_FOLDER = '-state-dawnping-ping';
+
 /** A pinger that records the models it was asked to ping. */
 export function createFakePinger(
-  result: PingResult = { ok: true, durationMs: 2100 },
+  result: PingResult = { ok: true, durationMs: 2100, logFolder: FAKE_PING_FOLDER },
 ): Pinger & { pinged: string[] } {
   return {
     pinged: [],
@@ -44,6 +48,34 @@ export function createFakePinger(
     async ping(model) {
       this.pinged.push(model);
       return result;
+    },
+  };
+}
+
+/**
+ * Session logs for tests. By default every ping is logged: the entries
+ * contain one answer in the fake ping folder at the given time.
+ */
+export function createFakeSessionLogs(
+  entries: (since: number) => LogEntry[] = (since) => [
+    { timestamp: since + 60_000, model: 'claude-haiku-5-5', folder: FAKE_PING_FOLDER },
+  ],
+  available = true,
+): SessionLogs {
+  return {
+    entriesSince: async (since, folder) =>
+      entries(since).filter((entry) => folder === undefined || entry.folder === folder),
+    available: async () => available,
+  };
+}
+
+/** A notifier that records what it was asked to show. */
+export function createFakeNotifier(shows = true): Notifier & { shown: string[] } {
+  return {
+    shown: [],
+    async notify(title, message) {
+      this.shown.push(`${title}: ${message}`);
+      return shows;
     },
   };
 }
@@ -61,11 +93,15 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
       configFile: join(dir, 'config', 'config.json'),
       stateDir: join(dir, 'state'),
       launchAgentsDir: join(dir, 'LaunchAgents'),
+      claudeProjectsDir: join(dir, 'claude', 'projects'),
     },
     // Sunday 2026-11-15, 09:00 in Istanbul.
     clock: { now: () => Date.parse('2026-11-15T06:00:00Z') },
     systemTimeZone: 'Europe/Istanbul',
     pinger: createFakePinger(),
+    sessionLogs: createFakeSessionLogs(),
+    notifier: createFakeNotifier(),
+    sleep: async () => {},
     scheduler: createFakeScheduler(),
     invocation: () => ({
       node: '/usr/local/bin/node',

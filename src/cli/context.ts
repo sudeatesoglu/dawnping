@@ -1,7 +1,9 @@
 import type { Paths } from '../adapters/paths.ts';
 import type { Clock } from '../core/clock.ts';
+import type { Notifier } from '../core/notifier.ts';
 import type { Pinger } from '../core/pinger.ts';
 import type { Scheduler } from '../core/scheduler.ts';
+import type { SessionLogs } from '../core/session-logs.ts';
 
 /**
  * Everything a command needs from the outside world.
@@ -18,6 +20,12 @@ export interface CliContext {
   systemTimeZone: string;
   /** Sends the message that starts the usage window. */
   pinger: Pinger;
+  /** Claude Code's session logs, to verify pings. */
+  sessionLogs: SessionLogs;
+  /** Desktop notifications. */
+  notifier: Notifier;
+  /** Waits; instant in tests. */
+  sleep(ms: number): Promise<void>;
   /** Runs `dawnping tick` in the background (launchd on macOS). */
   scheduler: Scheduler;
   /**

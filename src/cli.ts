@@ -4,6 +4,8 @@
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { createSessionLogReader } from './adapters/logs/session-log-reader.ts';
+import { createMacNotifier, silentNotifier } from './adapters/notifier/macos.ts';
 import { resolvePaths } from './adapters/paths.ts';
 import { createClaudePinger } from './adapters/pinger/claude-cli.ts';
 import { runCommand } from './adapters/process.ts';
@@ -24,6 +26,9 @@ process.exitCode = await runCli(process.argv.slice(2), {
     run: runCommand,
     env: process.env,
   }),
+  sessionLogs: createSessionLogReader(paths.claudeProjectsDir),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  notifier: process.platform === 'darwin' ? createMacNotifier(runCommand) : silentNotifier,
   scheduler:
     process.platform === 'darwin'
       ? createLaunchdScheduler({

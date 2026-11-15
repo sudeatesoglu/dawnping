@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PING_PROMPT } from '../../core/pinger.ts';
 import { projectFolderName } from '../../core/session-logs.ts';
 import type { CommandOptions, CommandResult } from '../process.ts';
-import { createClaudePinger } from './claude-cli.ts';
+import { createClaudePinger, subscriptionEnvironment } from './claude-cli.ts';
 
 let dir: string;
 let calls: { program: string; args: readonly string[]; options: CommandOptions | undefined }[];
@@ -136,5 +136,27 @@ describe('createClaudePinger', () => {
     expect(await pinger({ code: 3, stdout: '', stderr: '' }).ping('haiku')).toMatchObject({
       detail: 'exit code 3',
     });
+  });
+});
+
+describe('subscriptionEnvironment', () => {
+  it('removes everything that could bill something other than the subscription', () => {
+    expect(
+      subscriptionEnvironment({
+        PATH: '/usr/bin',
+        HOME: '/Users/u',
+        ANTHROPIC_API_KEY: 'sk',
+        ANTHROPIC_AUTH_TOKEN: 't',
+        ANTHROPIC_BASE_URL: 'https://proxy.example',
+        CLAUDE_CODE_USE_BEDROCK: '1',
+        CLAUDE_CODE_USE_VERTEX: '1',
+        CLAUDE_CODE_USE_SOMETHING_NEW: '1',
+        CLAUDE_CONFIG_DIR: '/Users/u/.claude-alt',
+      }),
+    ).toEqual({ PATH: '/usr/bin', HOME: '/Users/u', CLAUDE_CONFIG_DIR: '/Users/u/.claude-alt' });
+  });
+
+  it('drops a relative CLAUDE_CONFIG_DIR, which would resolve against the ping folder', () => {
+    expect(subscriptionEnvironment({ CLAUDE_CONFIG_DIR: '.claude-alt' })).toEqual({});
   });
 });

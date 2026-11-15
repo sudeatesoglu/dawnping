@@ -13,8 +13,11 @@ export interface LogEntry {
 }
 
 export interface SessionLogs {
-  /** Entries logged at or after `since` (epoch ms), oldest first. */
-  entriesSince(since: number): Promise<LogEntry[]>;
+  /**
+   * Entries logged at or after `since` (epoch ms), oldest first; only from
+   * one project folder if `folder` is given.
+   */
+  entriesSince(since: number, folder?: string): Promise<LogEntry[]>;
   /** True if Claude Code's projects directory exists at all. */
   available(): Promise<boolean>;
 }
@@ -28,8 +31,12 @@ export function projectFolderName(realPath: string): string {
   return realPath.replace(/[^A-Za-z0-9-]/g, '-');
 }
 
-/** Tolerance for the clock of the log writer and ours differing slightly. */
-export const CLOCK_SKEW_MS = 60_000;
+/**
+ * Claude Code runs on the same machine and clock, and logs the answer after
+ * the request, so its entry is never earlier than the ping. One second
+ * covers rounding only; anything older belongs to an earlier ping.
+ */
+export const LOG_TOLERANCE_MS = 1_000;
 
 /** The log entry of a ping that started at `startedAt`, if it was logged. */
 export function findPingEntry(
@@ -38,6 +45,6 @@ export function findPingEntry(
   startedAt: number,
 ): LogEntry | undefined {
   return entries.find(
-    (entry) => entry.folder === folder && entry.timestamp >= startedAt - CLOCK_SKEW_MS,
+    (entry) => entry.folder === folder && entry.timestamp >= startedAt - LOG_TOLERANCE_MS,
   );
 }

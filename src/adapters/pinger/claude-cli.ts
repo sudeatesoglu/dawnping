@@ -18,25 +18,25 @@ export interface ClaudePingerOptions {
 const NOT_LOGGED_IN = /not logged in|please run \/login|invalid api key/i;
 
 /**
- * Variables that make claude bill something other than the logged-in
- * subscription: an API key, a bearer token for a proxy, or AWS Bedrock /
- * Google Vertex. A ping billed that way does not start the subscription's
- * usage window (ADR-0003), so the ping always runs without them. The
- * user's own `claude` sessions are not affected.
+ * The environment for the ping. Anything that could make claude bill
+ * something other than the logged-in subscription is removed: API keys,
+ * proxy tokens and base URLs (ANTHROPIC_*), and provider switches such as
+ * Bedrock or Vertex (CLAUDE_CODE_USE_*), including ones added in later
+ * Claude Code releases. A ping billed elsewhere does not start the usage
+ * window (ADR-0003). The user's own claude sessions are not affected.
+ *
+ * A relative CLAUDE_CONFIG_DIR would resolve against the ping folder, not
+ * the user's directory, so it is dropped (dawnping ignores it as well).
  */
-export const NON_SUBSCRIPTION_VARIABLES = [
-  'ANTHROPIC_API_KEY',
-  'ANTHROPIC_AUTH_TOKEN',
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-] as const;
-
-function subscriptionEnvironment(
+export function subscriptionEnvironment(
   env: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> {
   return Object.fromEntries(
     Object.entries(env).filter(
-      ([name]) => !(NON_SUBSCRIPTION_VARIABLES as readonly string[]).includes(name),
+      ([name, value]) =>
+        !name.startsWith('ANTHROPIC_') &&
+        !name.startsWith('CLAUDE_CODE_USE_') &&
+        !(name === 'CLAUDE_CONFIG_DIR' && !value?.startsWith('/')),
     ),
   );
 }

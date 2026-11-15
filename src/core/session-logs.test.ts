@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CLOCK_SKEW_MS, findPingEntry, type LogEntry, projectFolderName } from './session-logs.ts';
+import {
+  findPingEntry,
+  LOG_TOLERANCE_MS,
+  type LogEntry,
+  projectFolderName,
+} from './session-logs.ts';
 
 describe('projectFolderName', () => {
   it.each([
@@ -24,18 +29,17 @@ describe('findPingEntry', () => {
     expect(findPingEntry([entry('-work', 1_000), ping], '-ping', startedAt)).toBe(ping);
   });
 
-  it('allows for a slightly different clock', () => {
-    const early = entry('-ping', -CLOCK_SKEW_MS + 1);
-    expect(findPingEntry([early], '-ping', startedAt)).toBe(early);
+  it('allows for timestamp rounding', () => {
+    const rounded = entry('-ping', -LOG_TOLERANCE_MS);
+    expect(findPingEntry([rounded], '-ping', startedAt)).toBe(rounded);
   });
 
-  it('ignores older pings and other folders', () => {
-    expect(
-      findPingEntry(
-        [entry('-ping', -CLOCK_SKEW_MS - 1), entry('-work', 2_000)],
-        '-ping',
-        startedAt,
-      ),
-    ).toBeUndefined();
+  it('does not take an earlier ping as confirmation', () => {
+    // A ping 40 seconds earlier, e.g. the scheduled one before a manual one.
+    expect(findPingEntry([entry('-ping', -40_000)], '-ping', startedAt)).toBeUndefined();
+  });
+
+  it('ignores other folders', () => {
+    expect(findPingEntry([entry('-work', 2_000)], '-ping', startedAt)).toBeUndefined();
   });
 });

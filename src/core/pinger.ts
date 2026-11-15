@@ -20,7 +20,12 @@ export type PingFailure =
   | 'failed';
 
 export type PingResult =
-  | { ok: true; durationMs: number }
+  | {
+      ok: true;
+      durationMs: number;
+      /** The project folder Claude Code logs this ping in (ADR-0003). */
+      logFolder: string;
+    }
   | { ok: false; failure: PingFailure; detail: string };
 
 export interface Pinger {

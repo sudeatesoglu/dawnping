@@ -38,29 +38,41 @@ describe('buildPlist', () => {
 describe('createLaunchdScheduler', () => {
   let dir: string;
   let calls: string[];
-  let loaded: boolean;
-  let bootstrapResult: CommandResult;
+  /** How many more `print` calls report the job as loaded. */
+  let loadedFor: number;
+  let results: Partial<Record<string, CommandResult>>;
+
+  const ok: CommandResult = { code: 0, stdout: '', stderr: '' };
 
   const scheduler = () =>
     createLaunchdScheduler({
       launchAgentsDir: join(dir, 'LaunchAgents'),
       uid: 501,
+      sleep: async () => {},
       run: async (program, args) => {
+        const [verb = ''] = args;
         calls.push([program, ...args].join(' '));
-        if (args[0] === 'print') return { code: loaded ? 0 : 113, stdout: '', stderr: '' };
-        if (args[0] === 'bootstrap') return bootstrapResult;
-        if (args[0] === 'bootout') loaded = false;
-        return { code: 0, stdout: '', stderr: '' };
+        const forced = results[verb];
+        if (forced) return forced;
+        if (verb === 'print') {
+          if (loadedFor > 0) {
+            loadedFor -= 1;
+            return ok;
+          }
+          return { code: 113, stdout: '', stderr: 'Could not find service' };
+        }
+        return ok;
       },
     });
 
   const plistPath = () => join(dir, 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
+  const service = `gui/501/${LAUNCHD_LABEL}`;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'dawnping-launchd-'));
     calls = [];
-    loaded = false;
-    bootstrapResult = { code: 0, stdout: '', stderr: '' };
+    loadedFor = 0;
+    results = {};
   });
 
   afterEach(async () => {
@@ -70,7 +82,7 @@ describe('createLaunchdScheduler', () => {
   it('writes the plist, creates the log directory and bootstraps the agent', async () => {
     await scheduler().install(spec(dir));
     expect(calls).toEqual([
-      `launchctl print gui/501/${LAUNCHD_LABEL}`,
+      `launchctl print ${service}`,
       `launchctl bootstrap gui/501 ${plistPath()}`,
     ]);
     expect(await readFile(plistPath(), 'utf8')).toContain(`<string>${LAUNCHD_LABEL}</string>`);
@@ -78,33 +90,72 @@ describe('createLaunchdScheduler', () => {
     expect((await stat(join(dir, 'state'))).isDirectory()).toBe(true);
   });
 
-  it('replaces a loaded agent instead of failing', async () => {
-    loaded = true;
+  it('waits until a loaded agent is really gone before bootstrapping again', async () => {
+    // Loaded at the first check, and still for two checks after bootout.
+    loadedFor = 3;
     await scheduler().install(spec(dir));
     expect(calls).toEqual([
-      `launchctl print gui/501/${LAUNCHD_LABEL}`,
-      `launchctl bootout gui/501/${LAUNCHD_LABEL}`,
+      `launchctl print ${service}`,
+      `launchctl bootout ${service}`,
+      `launchctl print ${service}`,
+      `launchctl print ${service}`,
+      `launchctl print ${service}`,
       `launchctl bootstrap gui/501 ${plistPath()}`,
     ]);
   });
 
-  it('reports a failed bootstrap', async () => {
-    bootstrapResult = { code: 5, stdout: '', stderr: 'Bootstrap failed: 5: Input/output error\n' };
+  it('gives up when launchd does not remove the old agent', async () => {
+    loadedFor = 1000;
+    await expect(scheduler().install(spec(dir))).rejects.toThrow(
+      'launchd did not remove the old agent in time; try again',
+    );
+  });
+
+  it('stops when bootout fails', async () => {
+    loadedFor = 1;
+    results['bootout'] = { code: 1, stdout: '', stderr: 'Operation not permitted' };
+    await expect(scheduler().install(spec(dir))).rejects.toThrow(
+      'launchctl bootout failed (exit 1): Operation not permitted',
+    );
+    expect(calls).not.toContain(`launchctl bootstrap gui/501 ${plistPath()}`);
+  });
+
+  it('removes the plist when bootstrap fails, so it does not load at next login', async () => {
+    results['bootstrap'] = {
+      code: 5,
+      stdout: '',
+      stderr: 'Bootstrap failed: 5: Input/output error\n',
+    };
     await expect(scheduler().install(spec(dir))).rejects.toThrow(
       'launchctl bootstrap failed (exit 5): Bootstrap failed: 5: Input/output error',
     );
+    await expect(stat(plistPath())).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('treats unexpected print failures as errors, not as "not loaded"', async () => {
+    results['print'] = { code: 1, stdout: '', stderr: '' };
+    await expect(scheduler().isInstalled()).rejects.toThrow('launchctl print failed (exit 1)');
   });
 
   it('uninstalls a loaded agent and removes the plist', async () => {
     await scheduler().install(spec(dir));
-    loaded = true;
+    loadedFor = 1;
     calls = [];
     expect(await scheduler().uninstall()).toBe(true);
     expect(calls).toEqual([
-      `launchctl print gui/501/${LAUNCHD_LABEL}`,
-      `launchctl bootout gui/501/${LAUNCHD_LABEL}`,
+      `launchctl print ${service}`,
+      `launchctl bootout ${service}`,
+      `launchctl print ${service}`,
     ]);
     await expect(stat(plistPath())).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('keeps the plist when the agent cannot be stopped', async () => {
+    await scheduler().install(spec(dir));
+    loadedFor = 1;
+    results['bootout'] = { code: 1, stdout: '', stderr: 'nope' };
+    await expect(scheduler().uninstall()).rejects.toThrow('launchctl bootout failed');
+    expect((await stat(plistPath())).isFile()).toBe(true);
   });
 
   it('removes a leftover plist even when the agent is not loaded', async () => {
@@ -115,7 +166,7 @@ describe('createLaunchdScheduler', () => {
 
   it('knows whether the agent is loaded', async () => {
     expect(await scheduler().isInstalled()).toBe(false);
-    loaded = true;
+    loadedFor = 1;
     expect(await scheduler().isInstalled()).toBe(true);
   });
 });

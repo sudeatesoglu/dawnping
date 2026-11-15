@@ -18,6 +18,12 @@ describe('agentEnvironment', () => {
     });
   });
 
+  it('drops node_modules/.bin entries a package manager added', () => {
+    expect(
+      agentEnvironment({ PATH: '/repo/node_modules/.bin:/opt/homebrew/bin::/usr/bin' })['PATH'],
+    ).toBe('/opt/homebrew/bin:/usr/bin');
+  });
+
   it('falls back to the system PATH', () => {
     expect(agentEnvironment({})).toEqual({ PATH: '/usr/bin:/bin:/usr/sbin:/sbin' });
   });

@@ -122,3 +122,32 @@ describe('createSessionLogReader', () => {
     expect(await createSessionLogReader(dir).available()).toBe(true);
   });
 });
+
+describe('rejected requests', () => {
+  /** How Claude Code logged a ping rejected by the weekly limit (#30). */
+  const rejected = JSON.stringify({
+    type: 'assistant',
+    timestamp: '2026-11-16T12:50:37.175Z',
+    isApiErrorMessage: true,
+    error: 'rate_limit',
+    message: {
+      model: '<synthetic>',
+      role: 'assistant',
+      content: [{ type: 'text', text: "You've hit your weekly limit" }],
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  });
+
+  it('are not answers: they start no window and confirm no ping', () => {
+    expect(parseLogLine(rejected, '-ping')).toBeUndefined();
+  });
+
+  it('are skipped by either marker alone', () => {
+    const flagOnly = JSON.parse(rejected);
+    flagOnly.message.model = 'claude-haiku-5-5';
+    const modelOnly = JSON.parse(rejected);
+    delete modelOnly.isApiErrorMessage;
+    expect(parseLogLine(JSON.stringify(flagOnly), '-ping')).toBeUndefined();
+    expect(parseLogLine(JSON.stringify(modelOnly), '-ping')).toBeUndefined();
+  });
+});

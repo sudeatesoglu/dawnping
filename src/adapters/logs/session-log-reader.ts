@@ -24,6 +24,11 @@ async function listOrEmpty(dir: string) {
  * Reduces one log line to a LogEntry. Only lines for a model answer count
  * (they carry `message.usage`); everything else, including the message
  * text, is ignored. Malformed lines return undefined.
+ *
+ * Claude Code also logs rejected requests (a usage limit, an API error) as
+ * answers with model "<synthetic>", `isApiErrorMessage: true` and zero
+ * tokens. Those are skipped: a rejected request starts no usage window and
+ * is not a confirmed ping.
  */
 export function parseLogLine(line: string, folder: string): LogEntry | undefined {
   let value: unknown;
@@ -33,13 +38,19 @@ export function parseLogLine(line: string, folder: string): LogEntry | undefined
     return undefined;
   }
   if (typeof value !== 'object' || value === null) return undefined;
-  const { timestamp, message } = value as { timestamp?: unknown; message?: unknown };
+  const { timestamp, message, isApiErrorMessage } = value as {
+    timestamp?: unknown;
+    message?: unknown;
+    isApiErrorMessage?: unknown;
+  };
+  if (isApiErrorMessage === true) return undefined;
   if (typeof timestamp !== 'string' || typeof message !== 'object' || message === null) {
     return undefined;
   }
   const { usage, model } = message as { usage?: unknown; model?: unknown };
   const time = Date.parse(timestamp);
   if (typeof usage !== 'object' || usage === null || Number.isNaN(time)) return undefined;
+  if (model === '<synthetic>') return undefined;
   return { timestamp: time, model: typeof model === 'string' ? model : undefined, folder };
 }
 

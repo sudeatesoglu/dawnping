@@ -4,10 +4,13 @@ import { loadConfig } from '../../adapters/config-store.ts';
 import { readTextFile } from '../../adapters/file-store.ts';
 import { effectiveTimeZone } from '../../core/config/resolve.ts';
 import type { Config } from '../../core/config/schema.ts';
-import { earliestPing, nextPing } from '../../core/next-ping.ts';
-import { parseState } from '../../core/state.ts';
+import { nextPlannedPing, pingTimes } from '../../core/next-ping.ts';
+import { WINDOW_MS } from '../../core/pinger.ts';
+import { activeWindowEnd, decideTick } from '../../core/planner/tick.ts';
+import { TICK_INTERVAL_SECONDS } from '../../core/scheduler.ts';
+import { parseState, type State } from '../../core/state.ts';
 import { formatTime, toLocalTime } from '../../core/time.ts';
-import { parseRepeatingWakes, wakeCommand, wakeCovers } from '../../core/wake.ts';
+import { coveringWake, parseRepeatingWakes, wakeCommand } from '../../core/wake.ts';
 import { type CliContext, CliError } from '../context.ts';
 
 type Status = 'ok' | 'warn' | 'fail';
@@ -19,8 +22,11 @@ interface Check {
   fix?: string;
 }
 
-/** The agent normally runs every 5 minutes while the Mac is awake. */
-const STALE_TICK_MS = 15 * 60_000;
+const INTERVAL_MINUTES = TICK_INTERVAL_SECONDS / 60;
+/** Three missed runs while the Mac is awake mean the agent is not running. */
+const STALE_TICK_MS = 3 * TICK_INTERVAL_SECONDS * 1000;
+
+const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 function ago(ms: number): string {
   const minutes = Math.round(ms / 60_000);
@@ -29,149 +35,136 @@ function ago(ms: number): string {
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
 }
 
-/** The time and text of the last line in tick.log, if any. */
-async function lastTick(stateDir: string): Promise<{ at: number; text: string } | undefined> {
-  const log = await readTextFile(join(stateDir, 'tick.log'));
-  const line = log?.trimEnd().split('\n').at(-1);
-  const match = line === undefined ? null : /^(\S+) (.*)$/.exec(line);
-  const at = match?.[1] === undefined ? Number.NaN : Date.parse(match[1]);
-  return match?.[2] === undefined || Number.isNaN(at) ? undefined : { at, text: match[2] };
+type TickLog =
+  | { kind: 'none' }
+  | { kind: 'run'; at: number; text: string }
+  /** The last line has no timestamp: usually node or launchd complaining. */
+  | { kind: 'unreadable'; line: string; at?: number };
+
+/**
+ * The latest run in tick.log. Right after a rotation the current run
+ * writes to tick.log.1, so that is read when tick.log does not exist.
+ */
+async function readTickLog(stateDir: string): Promise<TickLog> {
+  const text =
+    (await readTextFile(join(stateDir, 'tick.log'))) ??
+    (await readTextFile(join(stateDir, 'tick.log.1')));
+  const lines = text?.trimEnd().split('\n').filter(Boolean) ?? [];
+  const stamped = (line: string) => {
+    const match = /^(\S+) (.*)$/.exec(line);
+    const at = match?.[1] === undefined ? Number.NaN : Date.parse(match[1]);
+    return match?.[2] === undefined || Number.isNaN(at) ? undefined : { at, text: match[2] };
+  };
+  const last = lines.at(-1);
+  if (last === undefined) return { kind: 'none' };
+  const run = stamped(last);
+  if (run) return { kind: 'run', ...run };
+  const previous = [...lines].reverse().map(stamped).find(Boolean);
+  return { kind: 'unreadable', line: last.slice(0, 160), ...(previous ? { at: previous.at } : {}) };
+}
+
+/** Runs a check; an unexpected error becomes a failed check, not a crash. */
+async function guarded(
+  name: string,
+  check: () => Promise<Check | Check[] | undefined>,
+): Promise<Check[]> {
+  try {
+    const result = await check();
+    return result === undefined ? [] : [result].flat();
+  } catch (error) {
+    return [{ name, status: 'fail', detail: `could not check: ${reason(error)}` }];
+  }
+}
+
+function claudeCheck(version: string | undefined): Check {
+  return version === undefined
+    ? {
+        name: 'claude',
+        status: 'fail',
+        detail: 'the claude command was not found',
+        fix: 'install Claude Code, or make sure `claude` is on your PATH',
+      }
+    : { name: 'claude', status: 'ok', detail: version };
 }
 
 /**
- * Checks everything dawnping depends on and says how to fix what is wrong.
- * Read-only, and it never sends a message to Claude.
+ * Today's status comes from decideTick itself, so doctor and the agent
+ * can never disagree about late, retried or ineffective pings.
  */
-async function runChecks(ctx: CliContext): Promise<Check[]> {
-  const checks: Check[] = [];
+async function pingCheck(
+  ctx: CliContext,
+  config: Config,
+  timeZone: string,
+  state: State,
+): Promise<Check> {
   const now = ctx.clock.now();
-
-  const version = await ctx.system.claudeVersion();
-  checks.push(
-    version === undefined
-      ? {
-          name: 'claude',
-          status: 'fail',
-          detail: 'the claude command was not found',
-          fix: 'install Claude Code, or make sure `claude` is on your PATH',
-        }
-      : { name: 'claude', status: 'ok', detail: version },
-  );
-
-  const loaded = await loadConfig(ctx.paths.configFile);
-  let config: Config | undefined;
-  if (!loaded.ok) {
-    checks.push({
-      name: 'config',
-      status: 'fail',
-      detail: `invalid: ${loaded.errors[0]}`,
-      fix: 'dawnping config edit',
-    });
-  } else {
-    config = loaded.config;
-    const profiles = Object.keys(config.profiles).length;
-    checks.push(
-      profiles === 0
-        ? {
-            name: 'config',
-            status: 'warn',
-            detail: 'no profiles: every day is a rest day, so dawnping never pings',
-            fix: 'dawnping profile add <name> --days mon,tue,wed,thu,fri --work 09:00-18:00',
-          }
-        : {
-            name: 'config',
-            status: 'ok',
-            detail: `${loaded.source === 'file' ? 'valid' : 'defaults (no config file yet)'}, ${profiles} profile${profiles === 1 ? '' : 's'}`,
-          },
+  const input = { config, now, timeZone, state, activeWindowEnd: 'unchecked' as const };
+  let decision = decideTick(input);
+  if (decision.action === 'check-window') {
+    const answers = await ctx.sessionLogs.entriesSince(now - 2 * WINDOW_MS);
+    const end = activeWindowEnd(
+      answers.map((entry) => entry.timestamp),
+      now,
     );
+    decision = decideTick({ ...input, activeWindowEnd: end });
   }
-
-  const timeZone = config === undefined ? undefined : effectiveTimeZone(config, ctx.systemTimeZone);
-  if (config !== undefined) {
-    checks.push(
-      timeZone === undefined
-        ? {
-            name: 'time zone',
-            status: 'fail',
-            detail: `"${ctx.systemTimeZone}" is not an IANA zone`,
-            fix: 'dawnping config set timezone <zone>, e.g. Europe/Istanbul',
-          }
-        : { name: 'time zone', status: 'ok', detail: timeZone },
-    );
+  if (decision.action !== 'wait') {
+    return {
+      name: 'today',
+      status: 'ok',
+      detail: 'a ping is due; the agent sends it on its next run',
+    };
   }
-
-  const next =
-    config === undefined || timeZone === undefined ? undefined : nextPing(config, now, timeZone);
-  if (config !== undefined && timeZone !== undefined) {
-    checks.push(
-      next === undefined
-        ? { name: 'next ping', status: 'warn', detail: 'none planned in the coming week' }
-        : {
-            name: 'next ping',
-            status: 'ok',
-            detail: `${next.date} (${next.weekday}) at ${formatTime(next.minutes)}`,
-          },
-    );
-  }
-
-  let installed: boolean | undefined;
-  try {
-    installed = await ctx.scheduler.isInstalled();
-  } catch (error) {
-    checks.push({
-      name: 'agent',
+  if (decision.reason.includes('has no effect')) {
+    return {
+      name: 'today',
       status: 'warn',
-      detail: `could not check: ${error instanceof Error ? error.message : String(error)}`,
-    });
+      detail: `no ping: ${decision.reason}`,
+      fix: 'dawnping config set profiles.<name>.trigger auto   (see: dawnping plan)',
+    };
   }
-  if (installed === false) {
-    checks.push({
+  const today = toLocalTime(now, timeZone).date;
+  const next = nextPlannedPing(config, today);
+  const after = next ? `; next: ${next.date} (${next.weekday}) at ${formatTime(next.minutes)}` : '';
+  return { name: 'today', status: 'ok', detail: `${decision.reason}${after}` };
+}
+
+function agentCheck(ctx: CliContext, installed: boolean, log: TickLog): Check {
+  const now = ctx.clock.now();
+  if (!installed) {
+    return {
       name: 'agent',
       status: 'warn',
       detail: 'not installed: dawnping only pings when you run it yourself',
       fix: 'dawnping install',
-    });
-  } else if (installed === true) {
-    const tick = await lastTick(ctx.paths.stateDir);
-    if (tick === undefined) {
-      checks.push({ name: 'agent', status: 'warn', detail: 'installed, but it has not run yet' });
-    } else if (now - tick.at > STALE_TICK_MS) {
-      checks.push({
-        name: 'agent',
-        status: 'warn',
-        detail: `installed, but its last run was ${ago(now - tick.at)}`,
-        fix: 'dawnping uninstall && dawnping install',
-      });
-    } else {
-      checks.push({
-        name: 'agent',
-        status: 'ok',
-        detail: `runs every 5 minutes; last run ${ago(now - tick.at)}: ${tick.text}`,
-      });
-    }
+    };
   }
-
-  checks.push(
-    (await ctx.sessionLogs.available())
-      ? { name: 'session logs', status: 'ok', detail: 'readable' }
-      : {
-          name: 'session logs',
-          status: 'fail',
-          detail: `not found at ${ctx.paths.claudeProjectsDir}`,
-          fix: 'set CLAUDE_CONFIG_DIR if Claude Code keeps its files elsewhere',
-        },
-  );
-
-  checks.push(
-    lastPingCheck(parseState(await readTextFile(join(ctx.paths.stateDir, 'state.json'))), timeZone),
-  );
-
-  const wakeCheck = await wakeScheduleCheck(ctx, config, next);
-  if (wakeCheck) checks.push(wakeCheck);
-  return checks;
+  if (log.kind === 'none')
+    return { name: 'agent', status: 'warn', detail: 'installed, but it has not run yet' };
+  if (log.kind === 'unreadable') {
+    return {
+      name: 'agent',
+      status: 'fail',
+      detail: `its last run wrote: ${log.line}`,
+      fix: 'dawnping uninstall && dawnping install   (run it with the node you use now)',
+    };
+  }
+  if (now - log.at > STALE_TICK_MS) {
+    return {
+      name: 'agent',
+      status: 'warn',
+      detail: `installed, but its last run was ${ago(now - log.at)}`,
+      fix: 'dawnping uninstall && dawnping install',
+    };
+  }
+  return {
+    name: 'agent',
+    status: 'ok',
+    detail: `runs every ${INTERVAL_MINUTES} minutes; last run ${ago(now - log.at)}: ${log.text}`,
+  };
 }
 
-function lastPingCheck(state: ReturnType<typeof parseState>, timeZone: string | undefined): Check {
+function lastPingCheck(state: State, timeZone: string | undefined): Check {
   const last = state.lastPing;
   if (last === undefined) {
     return {
@@ -230,34 +223,150 @@ function lastPingCheck(state: ReturnType<typeof parseState>, timeZone: string | 
 }
 
 /**
- * A sleeping Mac cannot ping. Checks that a repeating wake brings it up
- * shortly before the next ping, and otherwise shows the command for it.
+ * A sleeping Mac cannot ping. pmset allows a single repeating wake, so the
+ * check looks at every profile's ping time and says which are covered.
  */
-async function wakeScheduleCheck(
-  ctx: CliContext,
-  config: Config | undefined,
-  next: ReturnType<typeof nextPing> | undefined,
-): Promise<Check | undefined> {
-  const schedule = await ctx.system.wakeSchedule();
-  if (schedule === undefined || config === undefined || next === undefined) return undefined;
-  const earliest = earliestPing(config) ?? next.minutes;
-  const days = [...new Set(Object.values(config.profiles).flatMap((p) => p.days))];
-  const fix = `${wakeCommand(earliest, days)}   (undo: sudo pmset repeat cancel)`;
+function wakeCheck(schedule: string, config: Config): Check | undefined {
+  const pings = pingTimes(config);
+  const earliest = pings.reduce<(typeof pings)[number] | undefined>(
+    (best, ping) => (best === undefined || ping.minutes < best.minutes ? ping : best),
+    undefined,
+  );
+  if (earliest === undefined) return undefined;
   const wakes = parseRepeatingWakes(schedule);
-  if (wakeCovers(wakes, next.weekday, next.minutes)) {
-    const unknownDays = wakes.some((w) => w.days === 'unknown');
+  const days = [...new Set(pings.flatMap((ping) => ping.days))];
+  const fix = `${wakeCommand(earliest.minutes, days)}   (undo: sudo pmset repeat cancel)`;
+
+  const uncovered = pings.filter((ping) =>
+    ping.days.some((day) => coveringWake(wakes, day, ping.minutes) === undefined),
+  );
+  if (uncovered.length === 0) {
     return {
       name: 'wake',
       status: 'ok',
-      detail: `the Mac wakes before the ${formatTime(next.minutes)} ping${unknownDays ? ' (days not checked)' : ''}`,
+      detail: 'the Mac is set to wake shortly before every ping',
     };
   }
+  const unreadable = wakes.some((wake) => wake.days === 'unknown');
+  const times = uncovered.map((ping) => `${formatTime(ping.minutes)} (${ping.name})`).join(', ');
+  const several = new Set(pings.map((ping) => ping.minutes)).size > 1;
   return {
     name: 'wake',
     status: 'warn',
-    detail: `the Mac is not set to wake before the ${formatTime(next.minutes)} ping; if it sleeps then, the ping waits until you wake it`,
+    detail:
+      `the Mac is not set to wake before the ping at ${times}; if it sleeps then, the ping waits until you wake it` +
+      (unreadable
+        ? '. A repeating wake exists, but its days could not be read (see: pmset -g sched)'
+        : '') +
+      (several
+        ? '. pmset allows one repeating wake, so only the earliest ping time can be covered'
+        : ''),
     fix,
   };
+}
+
+/**
+ * Checks everything dawnping depends on and says how to fix what is wrong.
+ * Read-only, and it never sends a message to Claude.
+ */
+async function runChecks(ctx: CliContext): Promise<Check[]> {
+  // Independent probes at once, so one slow command does not hold up the rest.
+  const [version, schedule, installed, logsAvailable, loaded, stateText, tickLog] =
+    await Promise.all([
+      ctx.system.claudeVersion(),
+      ctx.system.wakeSchedule(),
+      ctx.scheduler.isInstalled().catch((error: unknown) => error as Error),
+      ctx.sessionLogs.available().catch((error: unknown) => error as Error),
+      loadConfig(ctx.paths.configFile).catch((error: unknown) => error as Error),
+      readTextFile(join(ctx.paths.stateDir, 'state.json')).catch(
+        (error: unknown) => error as Error,
+      ),
+      readTickLog(ctx.paths.stateDir).catch((error: unknown) => error as Error),
+    ]);
+  const failed = (name: string, error: Error): Check => ({
+    name,
+    status: 'fail',
+    detail: `could not check: ${error.message}`,
+  });
+
+  const checks: Check[] = [claudeCheck(version)];
+
+  let config: Config | undefined;
+  if (loaded instanceof Error) checks.push(failed('config', loaded));
+  else if (!loaded.ok) {
+    checks.push({
+      name: 'config',
+      status: 'fail',
+      detail: `invalid: ${loaded.errors[0]}`,
+      fix: 'dawnping config edit',
+    });
+  } else {
+    config = loaded.config;
+    const profiles = Object.keys(config.profiles).length;
+    checks.push(
+      profiles === 0
+        ? {
+            name: 'config',
+            status: 'warn',
+            detail: 'no profiles: every day is a rest day, so dawnping never pings',
+            fix: 'dawnping profile add <name> --days mon,tue,wed,thu,fri --work 09:00-18:00',
+          }
+        : {
+            name: 'config',
+            status: 'ok',
+            detail: `${loaded.source === 'file' ? 'valid' : 'defaults (no config file yet)'}, ${profiles} profile${profiles === 1 ? '' : 's'}`,
+          },
+    );
+  }
+
+  const timeZone = config === undefined ? undefined : effectiveTimeZone(config, ctx.systemTimeZone);
+  if (config !== undefined && timeZone === undefined) {
+    checks.push({
+      name: 'time zone',
+      status: 'fail',
+      detail: `"${ctx.systemTimeZone}" is not an IANA zone`,
+      fix: 'dawnping config set timezone <zone>, e.g. Europe/Istanbul',
+    });
+  } else if (timeZone !== undefined) {
+    checks.push({ name: 'time zone', status: 'ok', detail: timeZone });
+  }
+
+  const state = stateText instanceof Error ? undefined : parseState(stateText);
+  if (config !== undefined && timeZone !== undefined && state !== undefined) {
+    const cfg = config;
+    const tz = timeZone;
+    checks.push(...(await guarded('today', () => pingCheck(ctx, cfg, tz, state))));
+  }
+
+  if (installed instanceof Error) checks.push(failed('agent', installed));
+  else if (tickLog instanceof Error) checks.push(failed('agent', tickLog));
+  else checks.push(agentCheck(ctx, installed, tickLog));
+
+  if (logsAvailable instanceof Error) checks.push(failed('session logs', logsAvailable));
+  else {
+    checks.push(
+      logsAvailable
+        ? { name: 'session logs', status: 'ok', detail: 'readable' }
+        : {
+            name: 'session logs',
+            status: 'fail',
+            detail: `not found at ${ctx.paths.claudeProjectsDir}`,
+            fix: 'set CLAUDE_CONFIG_DIR if Claude Code keeps its files elsewhere',
+          },
+    );
+  }
+
+  checks.push(
+    stateText instanceof Error
+      ? failed('last ping', stateText)
+      : lastPingCheck(state ?? { version: 1 }, timeZone),
+  );
+
+  if (schedule !== undefined && config !== undefined) {
+    const wake = wakeCheck(schedule, config);
+    if (wake) checks.push(wake);
+  }
+  return checks;
 }
 
 const LABELS: Record<Status, string> = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' };
@@ -275,15 +384,13 @@ export function registerDoctorCommand(program: Command, ctx: CliContext): void {
       }
       const failures = checks.filter((c) => c.status === 'fail').length;
       const warnings = checks.filter((c) => c.status === 'warn').length;
-      if (failures > 0) {
-        throw new CliError(
-          `${failures} problem${failures === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}.`,
-        );
-      }
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      if (failures > 0)
+        throw new CliError(`${plural(failures, 'problem')}, ${plural(warnings, 'warning')}.`);
       ctx.stdout(
         warnings === 0
           ? 'Everything looks good.\n'
-          : `No problems, ${warnings} warning${warnings === 1 ? '' : 's'}.\n`,
+          : `No problems, ${plural(warnings, 'warning')}.\n`,
       );
     });
 }

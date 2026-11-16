@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CliContext } from '../context.ts';
@@ -59,11 +59,11 @@ describe('doctor', () => {
         'ok    claude        2.1.325 (Claude Code)',
         'ok    config        defaults (no config file yet), 1 profile',
         'ok    time zone     Europe/Istanbul',
-        'ok    next ping     2026-11-16 (mon) at 06:00',
+        'ok    today         next ping at 06:00; next: 2026-11-17 (tue) at 06:00',
         'ok    agent         runs every 5 minutes; last run 2 min ago: no ping: next ping at 06:00',
         'ok    session logs  readable',
         'ok    last ping     2026-11-13 04:00, confirmed in the session log',
-        'ok    wake          the Mac wakes before the 06:00 ping',
+        'ok    wake          the Mac is set to wake shortly before every ping',
         'Everything looks good.',
         '',
       ].join('\n'),
@@ -91,7 +91,7 @@ describe('doctor', () => {
     const { stdout, code } = await t.run('doctor');
     expect(code).toBe(0);
     expect(stdout).toContain(
-      'warn  wake          the Mac is not set to wake before the 06:00 ping',
+      'warn  wake          the Mac is not set to wake before the ping at 06:00 (default)',
     );
     expect(stdout).toContain(
       'fix: sudo pmset repeat wakeorpoweron MTWRF 05:58:00   (undo: sudo pmset repeat cancel)',
@@ -156,7 +156,61 @@ describe('doctor', () => {
     await t.run('config', 'unset', 'profiles.default');
     const { stdout } = await t.run('doctor');
     expect(stdout).toContain('warn  config        no profiles: every day is a rest day');
-    expect(stdout).toContain('warn  next ping     none planned in the coming week');
+    expect(stdout).toContain('ok    today         2026-11-16 is a rest day');
+  });
+
+  it('shows what a crashing agent wrote last', async () => {
+    const t = await context();
+    await writeFile(
+      join(t.ctx.paths.stateDir, 'tick.log'),
+      `${new Date(NOW - 10 * 60_000).toISOString()} no ping: next ping at 06:00\nenv: node: No such file or directory\n`,
+    );
+    const result = await t.run('doctor');
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain(
+      'FAIL  agent         its last run wrote: env: node: No such file or directory',
+    );
+  });
+
+  it('reads the rotated log while tick.log does not exist yet', async () => {
+    const t = await context();
+    const log = join(t.ctx.paths.stateDir, 'tick.log');
+    await writeFile(
+      `${log}.1`,
+      `${new Date(NOW - 60_000).toISOString()} no ping: next ping at 06:00\n`,
+    );
+    await rm(log);
+    expect((await t.run('doctor')).stdout).toContain(
+      'ok    agent         runs every 5 minutes; last run 1 min ago',
+    );
+  });
+
+  it('turns an unreadable file into a failed check instead of crashing', async () => {
+    const t = await context();
+    await rm(join(t.ctx.paths.stateDir, 'state.json'));
+    await mkdir(join(t.ctx.paths.stateDir, 'state.json'));
+    const { stdout, code } = await t.run('doctor');
+    expect(code).toBe(1);
+    expect(stdout).toMatch(/FAIL {2}last ping {5}could not check: /);
+    expect(stdout).toContain('ok    claude');
+  });
+
+  it('agrees with tick about a fixed trigger that has no effect', async () => {
+    const t = await context();
+    await t.run('config', 'set', 'profiles.default.trigger', '11:00');
+    expect((await t.run('doctor')).stdout).toContain(
+      'warn  today         no ping: the fixed trigger 11:00 has no effect',
+    );
+  });
+
+  it('says only the earliest of several ping times can be covered', async () => {
+    const t = await context();
+    await t.run('profile', 'add', 'friday', '--days', 'fri', '--work', '12:00-17:00', '--take');
+    const { stdout } = await t.run('doctor');
+    expect(stdout).toContain('the ping at 09:30 (friday)');
+    expect(stdout).toContain(
+      'pmset allows one repeating wake, so only the earliest ping time can be covered',
+    );
   });
 
   it('never sends a message to Claude', async () => {

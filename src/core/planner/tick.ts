@@ -80,6 +80,10 @@ export function decideTick(input: TickInput): TickDecision {
   if (last !== undefined && (last.outcome === 'verified' || last.outcome === 'unverified')) {
     return { action: 'wait', reason: `already pinged today at ${at(last.at)}` };
   }
+  // A reached usage limit fails every ping until it resets; try tomorrow.
+  if (last?.outcome === 'limit-reached') {
+    return { action: 'wait', reason: 'a usage limit was reached today' };
+  }
   // Failed or interrupted ("pending") attempts are retried with growing gaps.
   if (last !== undefined) {
     if (last.attempts >= MAX_ATTEMPTS_PER_DAY) {

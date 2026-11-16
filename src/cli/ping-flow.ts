@@ -23,6 +23,7 @@ export type PingReport =
 export const HINTS: Record<PingFailure, string> = {
   'not-found': 'Install Claude Code, or make sure `claude` is on your PATH.',
   'not-logged-in': 'Log in to Claude Code first: run `claude` and follow the login steps.',
+  'limit-reached': 'No ping can start a window until the limit resets.',
   timeout: 'Check your network connection and try again.',
   failed: 'Run `claude -p "hi"` yourself to see the full error.',
 };
@@ -36,6 +37,7 @@ export const NOTIFICATIONS: Record<PingOutcome, string> = {
   unverified: 'Ping sent, but it is not in the session log, so it may not have counted.',
   'not-found': 'Ping failed: the claude command was not found.',
   'not-logged-in': 'Ping failed: Claude Code is not logged in.',
+  'limit-reached': 'No ping today: a usage limit is reached.',
   timeout: 'Ping failed: no answer in time.',
   failed: 'Ping failed.',
 };

@@ -132,6 +132,13 @@ describe('decideTick', () => {
     });
   });
 
+  it('stops for the day when a usage limit was reached', () => {
+    expect(decide(monday('07:30'), { state: ping('limit-reached', 1) })).toEqual({
+      action: 'wait',
+      reason: 'a usage limit was reached today',
+    });
+  });
+
   it('gives up after the last attempt of the day', () => {
     expect(decide(monday('15:00'), { state: ping('failed', MAX_ATTEMPTS_PER_DAY) })).toEqual({
       action: 'wait',

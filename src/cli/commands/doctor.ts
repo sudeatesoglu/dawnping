@@ -176,6 +176,7 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
   }
   const when = `${last.date}${timeZone ? ` ${formatTime(toLocalTime(last.at, timeZone).minutes)}` : ''}`;
   const tries = last.attempts > 1 ? ` after ${last.attempts} attempts` : '';
+  const why = last.detail ? `: ${last.detail}` : '';
   switch (last.outcome) {
     case 'verified':
       return { name: 'last ping', status: 'ok', detail: `${when}, confirmed in the session log` };
@@ -191,6 +192,13 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
         status: 'warn',
         detail: `${when}, no answer in time${tries}`,
         fix: 'the Mac needs an internet connection at ping time',
+      };
+    case 'limit-reached':
+      return {
+        name: 'last ping',
+        status: 'warn',
+        detail: `${when}, a usage limit was reached${why}`,
+        fix: 'nothing to fix: pings resume after the limit resets (the weekly limit cannot be avoided)',
       };
     case 'pending':
       return {
@@ -216,7 +224,7 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
       return {
         name: 'last ping',
         status: 'fail',
-        detail: `${when}, failed${tries}`,
+        detail: `${when}, failed${tries}${why}`,
         fix: 'run `dawnping ping` to see the error',
       };
   }

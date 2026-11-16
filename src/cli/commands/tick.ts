@@ -95,7 +95,12 @@ export function registerTickCommand(program: Command, ctx: CliContext): void {
         const record = { date: decision.date, attempts: decision.attempt };
         await saveState({ ...record, at: now, outcome: 'pending' });
         const report = await pingAndVerify(ctx, decision.model);
-        await saveState({ ...record, at: report.startedAt, outcome: report.outcome });
+        await saveState({
+          ...record,
+          at: report.startedAt,
+          outcome: report.outcome,
+          ...('detail' in report ? { detail: report.detail.slice(0, 300) } : {}),
+        });
 
         const what = `pinged ${decision.model} at ${decision.reason}`;
         if (!('detail' in report)) {
@@ -106,12 +111,18 @@ export function registerTickCommand(program: Command, ctx: CliContext): void {
           await ctx.notifier.notify('dawnping', NOTIFICATIONS.unverified);
           throw fail(`${what}: unverified, not in the session log`);
         }
-        // Notify the first failure and the last one, not every retry.
-        const giveUp = decision.attempt >= MAX_ATTEMPTS_PER_DAY;
+        // Notify the first failure and the last one, not every retry. A
+        // reached limit ends the day at once.
+        const limit = report.outcome === 'limit-reached';
+        const giveUp = limit || decision.attempt >= MAX_ATTEMPTS_PER_DAY;
         if (decision.attempt === 1 || giveUp) {
           await ctx.notifier.notify('dawnping', NOTIFICATIONS[report.outcome]);
         }
-        const suffix = giveUp ? `; giving up for today after ${decision.attempt} attempts` : '';
+        const suffix = limit
+          ? '; no more pings today'
+          : giveUp
+            ? `; giving up for today after ${decision.attempt} attempts`
+            : '';
         throw fail(`${what}: ${report.outcome} (${report.detail})${suffix}`);
       } catch (error) {
         if (error instanceof CliError) throw error;

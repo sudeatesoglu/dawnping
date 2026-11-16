@@ -19,6 +19,12 @@ export interface ClaudePingerOptions {
 const NOT_LOGGED_IN = /not logged in|please run \/login|invalid api key/i;
 
 /**
+ * Claude Code's reply when a usage limit is reached, e.g. "You've hit your
+ * weekly limit · resets 4pm (Europe/Istanbul)".
+ */
+const LIMIT_REACHED = /hit your [\w-]+ limit|usage limit reached|limit reached/i;
+
+/**
  * The environment for the ping. Anything that could make claude bill
  * something other than the logged-in subscription is removed: API keys,
  * proxy tokens and base URLs (ANTHROPIC_*), and provider switches such as
@@ -93,7 +99,11 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
         const output = `${result.stderr}\n${result.stdout}`;
         return {
           ok: false,
-          failure: NOT_LOGGED_IN.test(output) ? 'not-logged-in' : 'failed',
+          failure: LIMIT_REACHED.test(output)
+            ? 'limit-reached'
+            : NOT_LOGGED_IN.test(output)
+              ? 'not-logged-in'
+              : 'failed',
           detail:
             firstLine(result.stderr) || firstLine(result.stdout) || `exit code ${result.code}`,
         };

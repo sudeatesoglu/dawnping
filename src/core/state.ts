@@ -19,6 +19,8 @@ const PingRecord = z.strictObject({
   outcome: z.enum([...PING_OUTCOMES, 'pending']),
   /** Attempts on this date, so failures are retried a few times only. */
   attempts: z.number().int().min(1),
+  /** For failures: the first line of claude's message, shown by doctor. */
+  detail: z.string().max(300).optional(),
 });
 
 export const StateSchema = z.strictObject({

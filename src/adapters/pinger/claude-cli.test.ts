@@ -122,9 +122,19 @@ describe('createClaudePinger', () => {
     const result = await pinger({
       code: 1,
       stdout: '',
-      stderr: 'Usage limit reached. Use /login to switch accounts.\n',
+      stderr: 'Organization disabled. Use /login to switch accounts.\n',
     }).ping('haiku');
     expect(result).toMatchObject({ failure: 'failed' });
+  });
+
+  it.each([
+    // Seen on a real Mac (#30).
+    "You've hit your weekly limit · resets 4pm (Europe/Istanbul)",
+    'Usage limit reached. Use /login to switch accounts.',
+    '5-hour limit reached ∙ resets 3pm',
+  ])('recognizes a reached usage limit: %s', async (message) => {
+    const result = await pinger({ code: 1, stdout: `${message}\n`, stderr: '' }).ping('haiku');
+    expect(result).toEqual({ ok: false, failure: 'limit-reached', detail: message });
   });
 
   it('reports other failures with the first line of the error', async () => {

@@ -101,6 +101,10 @@ export async function createTestContext(overrides: Partial<CliContext> = {}) {
     pinger: createFakePinger(),
     sessionLogs: createFakeSessionLogs(),
     notifier: createFakeNotifier(),
+    system: {
+      claudeVersion: async () => '2.1.325 (Claude Code)',
+      wakeSchedule: async () => 'Scheduled power events:\n',
+    },
     sleep: async () => {},
     scheduler: createFakeScheduler(),
     invocation: () => ({

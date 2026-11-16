@@ -2,6 +2,7 @@ import { Command, CommanderError } from 'commander';
 import packageJson from '../../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agent.ts';
 import { registerConfigCommands } from './commands/config.ts';
+import { registerDoctorCommand } from './commands/doctor.ts';
 import { registerPingCommand } from './commands/ping.ts';
 import { registerPlanCommand } from './commands/plan.ts';
 import { registerProfileCommands } from './commands/profile.ts';
@@ -29,6 +30,7 @@ export function createProgram(ctx: CliContext): Command {
   registerPlanCommand(program, ctx);
   registerAgentCommands(program, ctx);
   registerTickCommand(program, ctx);
+  registerDoctorCommand(program, ctx);
   return program;
 }
 

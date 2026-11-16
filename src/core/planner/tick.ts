@@ -1,5 +1,6 @@
 import { resolveDay } from '../config/resolve.ts';
 import type { Config } from '../config/schema.ts';
+import { limitResetToday } from '../limit.ts';
 import { WINDOW_MS } from '../pinger.ts';
 import type { State } from '../state.ts';
 import { formatTime, parseWorkRange, toLocalTime } from '../time.ts';
@@ -80,12 +81,18 @@ export function decideTick(input: TickInput): TickDecision {
   if (last !== undefined && (last.outcome === 'verified' || last.outcome === 'unverified')) {
     return { action: 'wait', reason: `already pinged today at ${at(last.at)}` };
   }
-  // A reached usage limit fails every ping until it resets; try tomorrow.
+  // A reached usage limit fails every ping until it resets. If claude said
+  // when, and that is today, try again then; otherwise wait for tomorrow.
   if (last?.outcome === 'limit-reached') {
-    return { action: 'wait', reason: 'a usage limit was reached today' };
-  }
-  // Failed or interrupted ("pending") attempts are retried with growing gaps.
-  if (last !== undefined) {
+    const reset = last.detail === undefined ? undefined : limitResetToday(last.detail);
+    if (reset === undefined || last.attempts >= MAX_ATTEMPTS_PER_DAY) {
+      return { action: 'wait', reason: 'a usage limit was reached today' };
+    }
+    if (day.minutes < reset) {
+      return { action: 'wait', reason: `the usage limit resets at ${formatTime(reset)}` };
+    }
+  } else if (last !== undefined) {
+    // Failed or interrupted ("pending") attempts are retried with growing gaps.
     if (last.attempts >= MAX_ATTEMPTS_PER_DAY) {
       return { action: 'wait', reason: `gave up after ${last.attempts} failed pings today` };
     }

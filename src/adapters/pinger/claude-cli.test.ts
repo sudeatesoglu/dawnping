@@ -132,9 +132,29 @@ describe('createClaudePinger', () => {
     "You've hit your weekly limit · resets 4pm (Europe/Istanbul)",
     'Usage limit reached. Use /login to switch accounts.',
     '5-hour limit reached ∙ resets 3pm',
+    "You've hit your limit · resets 3pm",
+    "You've hit your Opus weekly limit",
   ])('recognizes a reached usage limit: %s', async (message) => {
     const result = await pinger({ code: 1, stdout: `${message}\n`, stderr: '' }).ping('haiku');
     expect(result).toEqual({ ok: false, failure: 'limit-reached', detail: message });
+  });
+
+  it('treats a passing API rate limit as a normal failure', async () => {
+    const result = await pinger({
+      code: 1,
+      stdout: '',
+      stderr: 'API Error: Rate limit reached for requests\n',
+    }).ping('haiku');
+    expect(result).toMatchObject({ failure: 'failed' });
+  });
+
+  it('recognizes a limit message even when claude exits 0', async () => {
+    const result = await pinger({
+      code: 0,
+      stdout: "You've hit your weekly limit · resets 4pm\n",
+      stderr: '',
+    }).ping('haiku');
+    expect(result).toMatchObject({ ok: false, failure: 'limit-reached' });
   });
 
   it('reports other failures with the first line of the error', async () => {

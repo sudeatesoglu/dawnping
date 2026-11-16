@@ -190,7 +190,7 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
       return {
         name: 'last ping',
         status: 'warn',
-        detail: `${when}, no answer in time${tries}`,
+        detail: `${when}, no answer in time${tries}${why}`,
         fix: 'the Mac needs an internet connection at ping time',
       };
     case 'limit-reached':
@@ -198,7 +198,7 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
         name: 'last ping',
         status: 'warn',
         detail: `${when}, a usage limit was reached${why}`,
-        fix: 'nothing to fix: pings resume after the limit resets (the weekly limit cannot be avoided)',
+        fix: 'nothing to fix: pings resume after the limit resets (the same day if claude gave a time, else tomorrow)',
       };
     case 'pending':
       return {
@@ -210,14 +210,14 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
       return {
         name: 'last ping',
         status: 'fail',
-        detail: `${when}, Claude Code is not logged in`,
+        detail: `${when}, Claude Code is not logged in${why}`,
         fix: 'run `claude` and log in',
       };
     case 'not-found':
       return {
         name: 'last ping',
         status: 'fail',
-        detail: `${when}, the claude command was not found`,
+        detail: `${when}, the claude command was not found${why}`,
         fix: 'install Claude Code, or make sure `claude` is on your PATH',
       };
     default:

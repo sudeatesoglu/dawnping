@@ -37,7 +37,7 @@ export const NOTIFICATIONS: Record<PingOutcome, string> = {
   unverified: 'Ping sent, but it is not in the session log, so it may not have counted.',
   'not-found': 'Ping failed: the claude command was not found.',
   'not-logged-in': 'Ping failed: Claude Code is not logged in.',
-  'limit-reached': 'No ping today: a usage limit is reached.',
+  'limit-reached': 'Ping skipped: a usage limit is reached until it resets.',
   timeout: 'Ping failed: no answer in time.',
   failed: 'Ping failed.',
 };

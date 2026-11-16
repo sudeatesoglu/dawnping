@@ -19,10 +19,14 @@ export interface ClaudePingerOptions {
 const NOT_LOGGED_IN = /not logged in|please run \/login|invalid api key/i;
 
 /**
- * Claude Code's reply when a usage limit is reached, e.g. "You've hit your
- * weekly limit · resets 4pm (Europe/Istanbul)".
+ * Claude Code's reply when a subscription usage limit is reached, e.g.
+ * "You've hit your weekly limit · resets 4pm (Europe/Istanbul)", "You've
+ * hit your limit", "5-hour limit reached". Deliberately narrow: a passing
+ * API rate limit ("Rate limit reached for requests") is a normal failure
+ * that is retried, not a reason to stop for the day.
  */
-const LIMIT_REACHED = /hit your [\w-]+ limit|usage limit reached|limit reached/i;
+export const LIMIT_REACHED =
+  /hit your (?:[\w-]+ ){0,3}limit|(?:5-hour|weekly|session|usage|daily) limit reached/i;
 
 /**
  * The environment for the ping. Anything that could make claude bill
@@ -95,8 +99,9 @@ export function createClaudePinger(options: ClaudePingerOptions): Pinger {
       if (result.timedOut) {
         return { ok: false, failure: 'timeout', detail: `no answer within ${timeoutMs / 1000}s` };
       }
-      if (result.code !== 0) {
-        const output = `${result.stderr}\n${result.stdout}`;
+      const output = `${result.stderr}\n${result.stdout}`;
+      // A limit message is a failure even if claude exited 0.
+      if (result.code !== 0 || LIMIT_REACHED.test(output)) {
         return {
           ok: false,
           failure: LIMIT_REACHED.test(output)

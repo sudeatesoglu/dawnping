@@ -43,14 +43,13 @@ export function parseLogLine(line: string, folder: string): LogEntry | undefined
     message?: unknown;
     isApiErrorMessage?: unknown;
   };
-  if (isApiErrorMessage === true) return undefined;
   if (typeof timestamp !== 'string' || typeof message !== 'object' || message === null) {
     return undefined;
   }
   const { usage, model } = message as { usage?: unknown; model?: unknown };
+  if (isApiErrorMessage === true || model === '<synthetic>') return undefined;
   const time = Date.parse(timestamp);
   if (typeof usage !== 'object' || usage === null || Number.isNaN(time)) return undefined;
-  if (model === '<synthetic>') return undefined;
   return { timestamp: time, model: typeof model === 'string' ? model : undefined, folder };
 }
 

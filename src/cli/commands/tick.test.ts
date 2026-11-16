@@ -111,7 +111,7 @@ describe('tick', () => {
     ]);
   });
 
-  it('stops after a reached usage limit, with one notification and the reason saved', async () => {
+  it('waits for a reached usage limit to reset, with one notification and the reason saved', async () => {
     let now = MONDAY_7AM;
     const notifier = createFakeNotifier();
     const detail = "You've hit your weekly limit · resets 4pm (Europe/Istanbul)";
@@ -119,14 +119,18 @@ describe('tick', () => {
     const t = await context({ pinger, notifier, clock: { now: () => now } });
 
     const result = await t.run('tick');
-    expect(result.stderr).toContain(`: limit-reached (${detail}); no more pings today\n`);
+    expect(result.stderr).toContain(
+      `: limit-reached (${detail}); trying again after it resets at 16:00\n`,
+    );
     expect(await readState(t.ctx.paths.stateDir)).toMatchObject({
       lastPing: { outcome: 'limit-reached', detail },
     });
     now += 3 * 60 * 60_000;
-    expect((await t.run('tick')).stdout).toContain('no ping: a usage limit was reached today');
+    expect((await t.run('tick')).stdout).toContain('no ping: the usage limit resets at 16:00');
     expect(pinger.pinged).toHaveLength(1);
-    expect(notifier.shown).toEqual(['dawnping: No ping today: a usage limit is reached.']);
+    expect(notifier.shown).toEqual([
+      'dawnping: Ping skipped: a usage limit is reached until it resets.',
+    ]);
   });
 
   it('records the attempt before pinging', async () => {

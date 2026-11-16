@@ -38,18 +38,27 @@ export function parseRepeatingWakes(text: string): RepeatingWake[] {
 /** How long before a ping a wake still counts as "in time". */
 export const WAKE_WINDOW_MINUTES = 30;
 
-/** True if a repeating wake brings the Mac up shortly before the ping. */
-export function wakeCovers(
+const previousDay = (day: Weekday): Weekday =>
+  WEEKDAYS[(WEEKDAYS.indexOf(day) + WEEKDAYS.length - 1) % WEEKDAYS.length] ?? day;
+
+/**
+ * The repeating wake that brings the Mac up shortly before a ping on a
+ * weekday, if any. A wake just before midnight covers a ping just after
+ * it (on the previous day of the week). Wakes whose days could not be
+ * read never count: dawnping cannot tell whether they fire that day.
+ */
+export function coveringWake(
   wakes: readonly RepeatingWake[],
   weekday: Weekday,
   ping: number,
-): boolean {
-  return wakes.some(
-    (wake) =>
-      (wake.days === 'unknown' || wake.days.includes(weekday)) &&
-      wake.minutes <= ping &&
-      wake.minutes >= ping - WAKE_WINDOW_MINUTES,
-  );
+): RepeatingWake | undefined {
+  return wakes.find((wake) => {
+    if (wake.days === 'unknown') return false;
+    const crossesMidnight = wake.minutes > ping;
+    const lead = crossesMidnight ? ping + 24 * 60 - wake.minutes : ping - wake.minutes;
+    const day = crossesMidnight ? previousDay(weekday) : weekday;
+    return lead <= WAKE_WINDOW_MINUTES && wake.days.includes(day);
+  });
 }
 
 /**

@@ -1,9 +1,9 @@
 import { profileFor } from './config/resolve.ts';
-import type { Config } from './config/schema.ts';
+import type { Config, Profile } from './config/schema.ts';
 import { SLOT_MINUTES } from './planner/demand.ts';
 import { planProfileDay } from './planner/plan-day.ts';
 import { addDays } from './skip.ts';
-import { toLocalTime, type Weekday, weekdayOf } from './time.ts';
+import { type Weekday, weekdayOf } from './time.ts';
 
 export interface PlannedPing {
   date: string;
@@ -13,30 +13,38 @@ export interface PlannedPing {
 }
 
 /**
- * The next planned ping within a week: today's if it is still ahead,
- * otherwise the next working day that is not skipped. Undefined if no
- * day in the coming week has one.
+ * The ping time a profile's plan uses, or undefined if it never pings: a
+ * fixed trigger after work starts (or 5+ hours before) has no effect, and
+ * tick waits instead (decideTick).
  */
-export function nextPing(config: Config, now: number, timeZone: string): PlannedPing | undefined {
-  const today = toLocalTime(now, timeZone);
-  for (let offset = 0; offset <= 7; offset++) {
+export function profilePingTime(profile: Profile): number | undefined {
+  const { plan, mode } = planProfileDay(profile);
+  const first = plan.windows[0];
+  if (mode === 'fixed' && first !== undefined && first.start !== plan.trigger) return undefined;
+  return plan.trigger * SLOT_MINUTES;
+}
+
+/**
+ * The first planned ping on a day after `today`, within a week. Today is
+ * left to decideTick, which also handles late and retried pings.
+ */
+export function nextPlannedPing(config: Config, today: string): PlannedPing | undefined {
+  for (let offset = 1; offset <= 7; offset++) {
     // Calendar arithmetic: no daylight saving shift can skip or repeat a day.
-    const date = addDays(today.date, offset);
+    const date = addDays(today, offset);
     if (config.skip.includes(date)) continue;
     const weekday = weekdayOf(date);
     const profile = profileFor(config, weekday);
-    if (profile === undefined) continue;
-    const minutes = planProfileDay(profile).plan.trigger * SLOT_MINUTES;
-    if (offset === 0 && today.minutes >= minutes) continue;
-    return { date, weekday, minutes };
+    const minutes = profile === undefined ? undefined : profilePingTime(profile);
+    if (minutes !== undefined) return { date, weekday, minutes };
   }
   return undefined;
 }
 
-/** The earliest ping time over all profiles, for one repeating wake. */
-export function earliestPing(config: Config): number | undefined {
-  const times = Object.values(config.profiles).map(
-    (profile) => planProfileDay(profile).plan.trigger * SLOT_MINUTES,
-  );
-  return times.length === 0 ? undefined : Math.min(...times);
+/** Every profile that pings, with its ping time and days. */
+export function pingTimes(config: Config): { name: string; minutes: number; days: Weekday[] }[] {
+  return Object.entries(config.profiles).flatMap(([name, profile]) => {
+    const minutes = profilePingTime(profile);
+    return minutes === undefined ? [] : [{ name, minutes, days: profile.days }];
+  });
 }

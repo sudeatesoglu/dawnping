@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Config } from './config/schema.ts';
-import { earliestPing, nextPing } from './next-ping.ts';
+import { nextPlannedPing, pingTimes, profilePingTime } from './next-ping.ts';
 
 const config: Config = {
   version: 1,
@@ -11,33 +11,42 @@ const config: Config = {
   },
   skip: ['2026-11-17'],
 };
-const at = (iso: string) => Date.parse(`${iso}+03:00`);
-const IST = 'Europe/Istanbul';
 
-describe('nextPing', () => {
-  it("returns today's ping while it is still ahead", () => {
-    expect(nextPing(config, at('2026-11-16T05:00:00'), IST)).toEqual({
-      date: '2026-11-16',
-      weekday: 'mon',
-      minutes: 6 * 60 + 30,
-    });
+describe('profilePingTime', () => {
+  it('is the auto or fixed ping time', () => {
+    expect(profilePingTime({ days: ['mon'], work: '10:00-18:00', trigger: 'auto' })).toBe(390);
+    expect(profilePingTime({ days: ['mon'], work: '10:00-18:00', trigger: '07:00' })).toBe(420);
   });
 
-  it('moves on past a done ping, skipped dates and rest days', () => {
-    // Monday afternoon → Tuesday is skipped → Wednesday.
-    expect(nextPing(config, at('2026-11-16T15:00:00'), IST)?.date).toBe('2026-11-18');
-    // Friday afternoon → weekend → Monday.
-    expect(nextPing(config, at('2026-11-20T15:00:00'), IST)?.date).toBe('2026-11-23');
-  });
-
-  it('has nothing to plan without profiles', () => {
-    expect(nextPing({ ...config, profiles: {} }, at('2026-11-16T05:00:00'), IST)).toBeUndefined();
+  it('is undefined for a fixed trigger that has no effect', () => {
+    expect(
+      profilePingTime({ days: ['mon'], work: '10:00-18:00', trigger: '11:00' }),
+    ).toBeUndefined();
   });
 });
 
-describe('earliestPing', () => {
-  it('takes the earliest ping over all profiles', () => {
-    expect(earliestPing(config)).toBe(6 * 60);
-    expect(earliestPing({ ...config, profiles: {} })).toBeUndefined();
+describe('nextPlannedPing', () => {
+  it('starts with the day after today and skips skipped dates and rest days', () => {
+    // From Monday: Tuesday is skipped → Wednesday.
+    expect(nextPlannedPing(config, '2026-11-16')).toEqual({
+      date: '2026-11-18',
+      weekday: 'wed',
+      minutes: 390,
+    });
+    // From Friday: the weekend has no profile → Monday.
+    expect(nextPlannedPing(config, '2026-11-20')?.date).toBe('2026-11-23');
+  });
+
+  it('has nothing to plan without pinging profiles', () => {
+    expect(nextPlannedPing({ ...config, profiles: {} }, '2026-11-16')).toBeUndefined();
+  });
+});
+
+describe('pingTimes', () => {
+  it('lists the profiles that ping, with their time and days', () => {
+    expect(pingTimes(config)).toEqual([
+      { name: 'default', minutes: 390, days: ['mon', 'tue', 'wed', 'thu'] },
+      { name: 'friday', minutes: 360, days: ['fri'] },
+    ]);
   });
 });

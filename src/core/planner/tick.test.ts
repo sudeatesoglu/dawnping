@@ -132,6 +132,33 @@ describe('decideTick', () => {
     });
   });
 
+  it('stops for the day when a usage limit was reached without a time', () => {
+    expect(decide(monday('07:30'), { state: ping('limit-reached', 1) })).toEqual({
+      action: 'wait',
+      reason: 'a usage limit was reached today',
+    });
+  });
+
+  it('tries again after a limit that resets later the same day', () => {
+    const limit: State = {
+      version: 1,
+      lastPing: {
+        date: '2026-11-16',
+        at: monday('06:30'),
+        outcome: 'limit-reached',
+        attempts: 1,
+        detail: "You've hit your weekly limit · resets 4pm (Europe/Istanbul)",
+      },
+    };
+    expect(decide(monday('15:55'), { state: limit })).toEqual({
+      action: 'wait',
+      reason: 'the usage limit resets at 16:00',
+    });
+    expect(decide(monday('16:00'), { state: limit })).toMatchObject({ action: 'ping', attempt: 2 });
+    // Not after working hours, though.
+    expect(decide(monday('18:00'), { state: limit })).toMatchObject({ action: 'wait' });
+  });
+
   it('gives up after the last attempt of the day', () => {
     expect(decide(monday('15:00'), { state: ping('failed', MAX_ATTEMPTS_PER_DAY) })).toEqual({
       action: 'wait',

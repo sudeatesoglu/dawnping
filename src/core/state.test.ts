@@ -17,3 +17,17 @@ describe('parseState', () => {
     },
   );
 });
+
+describe('parseState tolerance', () => {
+  it('ignores keys a newer dawnping adds and maps unknown outcomes to failed', () => {
+    const newer = {
+      version: 1,
+      futureKey: true,
+      lastPing: { date: '2026-11-16', at: 1, outcome: 'some-new-kind', attempts: 2, extra: 'x' },
+    };
+    expect(parseState(JSON.stringify(newer))).toEqual({
+      version: 1,
+      lastPing: { date: '2026-11-16', at: 1, outcome: 'failed', attempts: 2 },
+    });
+  });
+});

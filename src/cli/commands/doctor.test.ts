@@ -136,6 +136,35 @@ describe('doctor', () => {
     }
   });
 
+  it('shows why the last ping failed', async () => {
+    const lastPing = { date: '2026-11-16', at: NOW, attempts: 1 };
+    const limit = await context(
+      {},
+      {
+        version: 1,
+        lastPing: {
+          ...lastPing,
+          outcome: 'limit-reached',
+          detail: "You've hit your weekly limit · resets 4pm",
+        },
+      },
+    );
+    expect((await limit.run('doctor')).stdout).toContain(
+      "warn  last ping     2026-11-16 04:00, a usage limit was reached: You've hit your weekly limit · resets 4pm",
+    );
+    await limit.cleanup();
+    const failed = await context(
+      {},
+      {
+        version: 1,
+        lastPing: { ...lastPing, outcome: 'failed', detail: 'model not found' },
+      },
+    );
+    expect((await failed.run('doctor')).stdout).toContain(
+      'FAIL  last ping     2026-11-16 04:00, failed: model not found',
+    );
+  });
+
   it('suggests a first ping when there was none', async () => {
     const t = await context({}, { version: 1 });
     expect((await t.run('doctor')).stdout).toContain('warn  last ping     none yet');

@@ -11,6 +11,7 @@ import { createClaudePinger } from './adapters/pinger/claude-cli.ts';
 import { runCommand } from './adapters/process.ts';
 import { createLaunchdScheduler } from './adapters/scheduler/launchd.ts';
 import { createUnsupportedScheduler } from './adapters/scheduler/unsupported.ts';
+import { createSystemProbe } from './adapters/system.ts';
 import { systemClock } from './adapters/system-clock.ts';
 import { confirm, openInEditor } from './adapters/terminal.ts';
 import { runCli } from './cli/program.ts';
@@ -27,6 +28,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     env: process.env,
   }),
   sessionLogs: createSessionLogReader(paths.claudeProjectsDir),
+  system: createSystemProbe(runCommand),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   notifier: process.platform === 'darwin' ? createMacNotifier(runCommand) : silentNotifier,
   scheduler:

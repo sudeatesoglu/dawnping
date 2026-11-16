@@ -4,6 +4,7 @@ import type { Notifier } from '../core/notifier.ts';
 import type { Pinger } from '../core/pinger.ts';
 import type { Scheduler } from '../core/scheduler.ts';
 import type { SessionLogs } from '../core/session-logs.ts';
+import type { SystemProbe } from '../core/system.ts';
 
 /**
  * Everything a command needs from the outside world.
@@ -24,6 +25,8 @@ export interface CliContext {
   sessionLogs: SessionLogs;
   /** Desktop notifications. */
   notifier: Notifier;
+  /** Read-only facts about the machine (claude version, wake schedule). */
+  system: SystemProbe;
   /** Waits; instant in tests. */
   sleep(ms: number): Promise<void>;
   /** Runs `dawnping tick` in the background (launchd on macOS). */

@@ -7,7 +7,11 @@
 export interface AgentSpec {
   /** Absolute program and arguments, e.g. [node, /path/to/cli.js, "tick"]. */
   programArguments: string[];
-  /** How often to run, in seconds. */
+  /**
+   * How often to run, in seconds. Runs fall on the wall clock (every 5
+   * minutes: :00, :05, ...), and a run missed while the Mac slept happens
+   * as soon as it wakes.
+   */
   intervalSeconds: number;
   /** Where the agent's output goes. */
   logFile: string;

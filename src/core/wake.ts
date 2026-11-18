@@ -35,17 +35,24 @@ export function parseRepeatingWakes(text: string): RepeatingWake[] {
   return wakes;
 }
 
-/** How long before a ping a wake still counts as "in time". */
+/**
+ * How long after a ping time a wake still counts as "in time". The wake
+ * has to come at or after the ping time, never before: after a scheduled
+ * wake that nobody uses, macOS sleeps again within a minute, so a tick
+ * started by an early wake would only wait for the ping time and miss it.
+ */
 export const WAKE_WINDOW_MINUTES = 30;
 
-const previousDay = (day: Weekday): Weekday =>
-  WEEKDAYS[(WEEKDAYS.indexOf(day) + WEEKDAYS.length - 1) % WEEKDAYS.length] ?? day;
+const DAY_MINUTES = 24 * 60;
+
+const shiftDay = (day: Weekday, by: number): Weekday =>
+  WEEKDAYS[(WEEKDAYS.indexOf(day) + by + WEEKDAYS.length) % WEEKDAYS.length] ?? day;
 
 /**
- * The repeating wake that brings the Mac up shortly before a ping on a
- * weekday, if any. A wake just before midnight covers a ping just after
- * it (on the previous day of the week). Wakes whose days could not be
- * read never count: dawnping cannot tell whether they fire that day.
+ * The repeating wake that brings the Mac up shortly after a ping time on a
+ * weekday, if any. A wake just after midnight covers a ping just before
+ * it (on the next day of the week). Wakes whose days could not be read
+ * never count: dawnping cannot tell whether they fire that day.
  */
 export function coveringWake(
   wakes: readonly RepeatingWake[],
@@ -54,18 +61,18 @@ export function coveringWake(
 ): RepeatingWake | undefined {
   return wakes.find((wake) => {
     if (wake.days === 'unknown') return false;
-    const crossesMidnight = wake.minutes > ping;
-    const lead = crossesMidnight ? ping + 24 * 60 - wake.minutes : ping - wake.minutes;
-    const day = crossesMidnight ? previousDay(weekday) : weekday;
-    return lead <= WAKE_WINDOW_MINUTES && wake.days.includes(day);
+    const crossesMidnight = wake.minutes < ping;
+    const delay = crossesMidnight ? wake.minutes + DAY_MINUTES - ping : wake.minutes - ping;
+    const day = crossesMidnight ? shiftDay(weekday, 1) : weekday;
+    return delay <= WAKE_WINDOW_MINUTES && wake.days.includes(day);
   });
 }
 
 /**
- * Wake this long before the ping. Short on purpose: macOS can go back to
- * sleep soon after a scheduled wake if nobody uses the Mac.
+ * Wake this long after the ping time. launchd runs the tick it missed
+ * during sleep as soon as the Mac wakes, and by then the ping is due.
  */
-export const WAKE_LEAD_MINUTES = 2;
+export const WAKE_DELAY_MINUTES = 2;
 
 const PMSET_LETTERS: Record<Weekday, string> = {
   mon: 'M',
@@ -77,11 +84,19 @@ const PMSET_LETTERS: Record<Weekday, string> = {
   sun: 'U',
 };
 
-/** The `pmset repeat` command that wakes the Mac before the earliest ping. */
-export function wakeCommand(earliestPing: number, days: readonly Weekday[]): string {
-  const letters = WEEKDAYS.filter((day) => days.includes(day))
+/**
+ * The `pmset repeat` command that wakes the Mac just after a ping time.
+ * It uses `wake`, not `wakeorpoweron`: a Mac that was shut down would
+ * start up to the login screen (with FileVault, before any user agent
+ * can run), so powering on would only surprise the user.
+ */
+export function wakeCommand(ping: number, days: readonly Weekday[]): string {
+  const at = ping + WAKE_DELAY_MINUTES;
+  // A wake after midnight belongs to the next day of the week.
+  const shift = at >= DAY_MINUTES ? 1 : 0;
+  const wakeDays = new Set(days.map((day) => shiftDay(day, shift)));
+  const letters = WEEKDAYS.filter((day) => wakeDays.has(day))
     .map((day) => PMSET_LETTERS[day])
     .join('');
-  const at = formatTime(Math.max(0, earliestPing - WAKE_LEAD_MINUTES));
-  return `sudo pmset repeat wakeorpoweron ${letters} ${at}:00`;
+  return `sudo pmset repeat wake ${letters} ${formatTime(at % DAY_MINUTES)}:00`;
 }

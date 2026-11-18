@@ -6,7 +6,7 @@ import { createFakeScheduler, createFakeSessionLogs, createTestContext } from '.
 
 /** Monday 2026-11-16, 04:00 in Istanbul: before the 06:00 auto ping for 09:00-18:00. */
 const NOW = Date.parse('2026-11-16T04:00:00+03:00');
-const WAKES = 'Repeating power events:\n  wakepoweron at 5:58AM weekdays only\n';
+const WAKES = 'Repeating power events:\n  wake at 6:02AM weekdays only\n';
 
 let cleanup: (() => Promise<void>) | undefined;
 
@@ -63,7 +63,7 @@ describe('doctor', () => {
         'ok    agent         runs every 5 minutes; last run 2 min ago: no ping: next ping at 06:00',
         'ok    session logs  readable',
         'ok    last ping     2026-11-13 04:00, confirmed in the session log',
-        'ok    wake          the Mac is set to wake shortly before every ping',
+        'ok    wake          the Mac is set to wake just after every ping time',
         'Everything looks good.',
         '',
       ].join('\n'),
@@ -91,12 +91,22 @@ describe('doctor', () => {
     const { stdout, code } = await t.run('doctor');
     expect(code).toBe(0);
     expect(stdout).toContain(
-      'warn  wake          the Mac is not set to wake before the ping at 06:00 (default)',
+      'warn  wake          the Mac is not set to wake just after the ping at 06:00 (default)',
     );
     expect(stdout).toContain(
-      'fix: sudo pmset repeat wakeorpoweron MTWRF 05:58:00   (undo: sudo pmset repeat cancel)',
+      'fix: sudo pmset repeat wake MTWRF 06:02:00   (undo: sudo pmset repeat cancel)',
     );
     expect(stdout).toContain('No problems, 1 warning.\n');
+  });
+
+  it('does not count a wake before the ping time', async () => {
+    const early = 'Repeating power events:\n  wakepoweron at 5:58AM weekdays only\n';
+    const t = await context({
+      system: { claudeVersion: async () => 'v', wakeSchedule: async () => early },
+    });
+    const { stdout } = await t.run('doctor');
+    expect(stdout).toContain('warn  wake');
+    expect(stdout).toContain('A wake before the ping time does not help');
   });
 
   it('skips the wake check where there is no pmset', async () => {
@@ -232,14 +242,16 @@ describe('doctor', () => {
     );
   });
 
-  it('says only the earliest of several ping times can be covered', async () => {
+  it('covers the ping time used on the most days when there are several', async () => {
     const t = await context();
     await t.run('profile', 'add', 'friday', '--days', 'fri', '--work', '12:00-17:00', '--take');
     const { stdout } = await t.run('doctor');
     expect(stdout).toContain('the ping at 09:30 (friday)');
     expect(stdout).toContain(
-      'pmset allows one repeating wake, so only the earliest ping time can be covered',
+      'pmset allows one repeating wake, so only one ping time can be covered',
     );
+    // Monday to Thursday ping at 06:00; Friday is left out of the wake.
+    expect(stdout).toContain('fix: sudo pmset repeat wake MTWR 06:02:00');
   });
 
   it('never sends a message to Claude', async () => {

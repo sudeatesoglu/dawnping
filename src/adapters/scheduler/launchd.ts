@@ -12,8 +12,38 @@ function xml(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-/** The LaunchAgent property list for a spec. Pure, so it is unit-tested. */
+/** Keeps the Mac awake while the command it runs is running. */
+const CAFFEINATE = ['/usr/bin/caffeinate', '-i'];
+
+/**
+ * The minutes past each hour at which the agent runs. The interval must
+ * divide an hour, so the runs fall on the same wall-clock times every hour.
+ */
+export function calendarMinutes(intervalSeconds: number): number[] {
+  const step = intervalSeconds / 60;
+  if (!Number.isInteger(step) || step < 1 || 60 % step !== 0) {
+    throw new Error(`the interval must divide an hour into whole minutes, not ${intervalSeconds}s`);
+  }
+  return Array.from({ length: 60 / step }, (_, index) => index * step);
+}
+
+/**
+ * The LaunchAgent property list for a spec. Pure, so it is unit-tested.
+ *
+ * The agent runs on the wall clock (StartCalendarInterval), not every N
+ * seconds (StartInterval): launchd counts StartInterval only while the
+ * Mac is awake, so after a night of short wakes the runs land at random
+ * times. A calendar run missed during sleep runs as soon as the Mac wakes,
+ * so a scheduled wake just after the ping time starts the ping
+ * (ADR-0006). caffeinate keeps the Mac awake until the run finishes.
+ */
 export function buildPlist(label: string, spec: AgentSpec): string {
+  const calendar = calendarMinutes(spec.intervalSeconds)
+    .map(
+      (minute) =>
+        `    <dict>\n      <key>Minute</key>\n      <integer>${minute}</integer>\n    </dict>`,
+    )
+    .join('\n');
   const strings = (values: readonly string[], indent: string) =>
     values.map((value) => `${indent}<string>${xml(value)}</string>`).join('\n');
   const environment = Object.entries(spec.environment)
@@ -28,10 +58,12 @@ export function buildPlist(label: string, spec: AgentSpec): string {
   <string>${xml(label)}</string>
   <key>ProgramArguments</key>
   <array>
-${strings(spec.programArguments, '    ')}
+${strings([...CAFFEINATE, ...spec.programArguments], '    ')}
   </array>
-  <key>StartInterval</key>
-  <integer>${Math.round(spec.intervalSeconds)}</integer>
+  <key>StartCalendarInterval</key>
+  <array>
+${calendar}
+  </array>
   <key>RunAtLoad</key>
   <true/>
   <key>ProcessType</key>
@@ -75,8 +107,8 @@ function failure(step: string, result: CommandResult): Error {
 /**
  * A Scheduler backed by a per-user LaunchAgent.
  *
- * launchd runs the agent every StartInterval seconds while the Mac is
- * awake, and once after waking if an interval was missed during sleep.
+ * launchd runs the agent at fixed minutes of every hour, and once right
+ * after waking if one of them was missed during sleep.
  */
 export function createLaunchdScheduler(options: LaunchdOptions): Scheduler {
   const label = options.label ?? LAUNCHD_LABEL;

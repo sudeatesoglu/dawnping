@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentSpec } from '../../core/scheduler.ts';
 import type { CommandResult } from '../process.ts';
-import { buildPlist, createLaunchdScheduler, LAUNCHD_LABEL } from './launchd.ts';
+import { buildPlist, calendarMinutes, createLaunchdScheduler, LAUNCHD_LABEL } from './launchd.ts';
 
 const spec = (dir: string): AgentSpec => ({
   programArguments: ['/usr/local/bin/node', '/opt/dawnping & co/cli.js', 'tick'],
@@ -18,9 +18,24 @@ describe('buildPlist', () => {
   it('describes the agent and escapes XML', () => {
     const plist = buildPlist('test.label', spec('/s'));
     expect(plist).toContain('<string>/opt/dawnping &amp; co/cli.js</string>');
-    expect(plist).toContain('<key>StartInterval</key>\n  <integer>300</integer>');
+    expect(plist).toContain(
+      '<array>\n    <string>/usr/bin/caffeinate</string>\n    <string>-i</string>\n    <string>/usr/local/bin/node</string>',
+    );
+    expect(plist).toContain(
+      '<key>StartCalendarInterval</key>\n  <array>\n    <dict>\n      <key>Minute</key>\n      <integer>0</integer>\n    </dict>',
+    );
+    expect(plist).toContain('<integer>55</integer>');
+    // launchd would count StartInterval only while the Mac is awake.
+    expect(plist).not.toContain('StartInterval<');
     expect(plist).toContain('<key>PATH</key>\n    <string>/opt/homebrew/bin:/usr/bin</string>');
     expect(plist).toContain('<key>RunAtLoad</key>\n  <true/>');
+  });
+
+  it('runs at fixed minutes of every hour', () => {
+    expect(calendarMinutes(300)).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]);
+    expect(calendarMinutes(3600)).toEqual([0]);
+    expect(() => calendarMinutes(420)).toThrow('divide an hour');
+    expect(() => calendarMinutes(90)).toThrow('divide an hour');
   });
 
   it.runIf(process.platform === 'darwin')('passes plutil -lint', async () => {

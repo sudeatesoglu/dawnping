@@ -46,7 +46,7 @@ The background job runs `dist/cli.js` from the cloned folder, so run `pnpm build
 
 ## How it works
 
-A launchd agent runs `dawnping` every 5 minutes. Most runs only check the time and exit. At the planned time it:
+A launchd agent runs `dawnping` every 5 minutes on the clock (:00, :05, …), and right after the Mac wakes if it missed a run while asleep. Most runs only check the time and exit. At the planned time it:
 
 1. reads the last 24 hours of Claude Code's session logs and stops if a usage window is already running,
 2. runs `claude -p --model haiku` with a one-line message from its own folder, so its log stays apart from your projects,
@@ -68,7 +68,7 @@ Its own files are the config (`~/.config/dawnping/`) and a small state file and 
 - dawnping does not give you more usage. Weekly limits still apply; it only distributes the 5-hour windows better across your day.
 - It needs the subscription's 5-hour window. The ping always uses your Claude login, never an API key, and with API billing alone there is no window to move.
 - When exactly the window starts is not officially documented. A measurement showed it starts at the ping itself, not rounded to the hour ([ADR-0003](docs/adr/0003-start-the-window-with-a-headless-haiku-ping.md)); the reset time Claude shows may differ by a few minutes.
-- macOS only for now. Your Mac has to be awake and online at ping time. If it sleeps through it, dawnping pings on its first run after the Mac wakes, as long as your working day has not ended. A scheduled wake (`sudo pmset repeat wake MTWRF <time>`) helps; set it to the ping time or a minute after, not before. Whether a short wake with the lid closed is long enough for the ping is still being measured ([#31](https://github.com/sudeatesoglu/dawnping/issues/31)).
+- macOS only for now. Your Mac has to be awake and online at ping time. If it sleeps through it, dawnping pings on its first run after the Mac wakes, as long as your working day has not ended. A scheduled wake 2 minutes after the ping time should let it ping on time even with the lid closed (still being measured, [#31](https://github.com/sudeatesoglu/dawnping/issues/31)); `dawnping doctor` prints the `pmset` command for your ping time. Waking before the ping time does not help: the Mac goes back to sleep before the ping is due ([ADR-0006](docs/adr/0006-run-the-agent-on-the-wall-clock.md)).
 
 ## Development
 

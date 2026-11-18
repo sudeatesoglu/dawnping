@@ -24,3 +24,4 @@ Accepted records are immutable. When a decision changes, write a new ADR that su
 | [0003](0003-start-the-window-with-a-headless-haiku-ping.md) | Start the usage window with a headless Haiku ping | Accepted |
 | [0004](0004-optimize-the-trigger-over-a-demand-profile.md) | Optimize the trigger time over a demand profile | Superseded by 0005 (objective) |
 | [0005](0005-minimize-squared-window-loads.md) | Minimize the sum of squared window loads | Accepted |
+| [0006](0006-run-the-agent-on-the-wall-clock.md) | Run the agent on the wall clock and wake the Mac after the ping time | Accepted |

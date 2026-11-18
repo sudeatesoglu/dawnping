@@ -9,7 +9,7 @@ import { WINDOW_MS } from '../../core/pinger.ts';
 import { activeWindowEnd, decideTick } from '../../core/planner/tick.ts';
 import { TICK_INTERVAL_SECONDS } from '../../core/scheduler.ts';
 import { parseState, type State } from '../../core/state.ts';
-import { formatTime, toLocalTime } from '../../core/time.ts';
+import { formatTime, toLocalTime, type Weekday } from '../../core/time.ts';
 import { coveringWake, parseRepeatingWakes, wakeCommand } from '../../core/wake.ts';
 import { type CliContext, CliError } from '../context.ts';
 
@@ -232,18 +232,22 @@ function lastPingCheck(state: State, timeZone: string | undefined): Check {
 
 /**
  * A sleeping Mac cannot ping. pmset allows a single repeating wake, so the
- * check looks at every profile's ping time and says which are covered.
+ * check suggests one for the ping time used on the most days and says
+ * which ping times are not covered.
  */
 function wakeCheck(schedule: string, config: Config): Check | undefined {
   const pings = pingTimes(config);
-  const earliest = pings.reduce<(typeof pings)[number] | undefined>(
-    (best, ping) => (best === undefined || ping.minutes < best.minutes ? ping : best),
-    undefined,
+  const daysAt = new Map<number, Weekday[]>();
+  for (const ping of pings) {
+    daysAt.set(ping.minutes, [...(daysAt.get(ping.minutes) ?? []), ...ping.days]);
+  }
+  // The time with the most days; the earlier one on a tie.
+  const [target] = [...daysAt.entries()].sort(
+    ([timeA, daysA], [timeB, daysB]) => daysB.length - daysA.length || timeA - timeB,
   );
-  if (earliest === undefined) return undefined;
+  if (target === undefined) return undefined;
   const wakes = parseRepeatingWakes(schedule);
-  const days = [...new Set(pings.flatMap((ping) => ping.days))];
-  const fix = `${wakeCommand(earliest.minutes, days)}   (undo: sudo pmset repeat cancel)`;
+  const fix = `${wakeCommand(target[0], target[1])}   (undo: sudo pmset repeat cancel)`;
 
   const uncovered = pings.filter((ping) =>
     ping.days.some((day) => coveringWake(wakes, day, ping.minutes) === undefined),
@@ -252,22 +256,22 @@ function wakeCheck(schedule: string, config: Config): Check | undefined {
     return {
       name: 'wake',
       status: 'ok',
-      detail: 'the Mac is set to wake shortly before every ping',
+      detail: 'the Mac is set to wake just after every ping time',
     };
   }
   const unreadable = wakes.some((wake) => wake.days === 'unknown');
   const times = uncovered.map((ping) => `${formatTime(ping.minutes)} (${ping.name})`).join(', ');
-  const several = new Set(pings.map((ping) => ping.minutes)).size > 1;
   return {
     name: 'wake',
     status: 'warn',
     detail:
-      `the Mac is not set to wake before the ping at ${times}; if it sleeps then, the ping waits until you wake it` +
+      `the Mac is not set to wake just after the ping at ${times}; if it sleeps then, the ping waits until it wakes. ` +
+      'A wake before the ping time does not help: the Mac sleeps again before the ping is due' +
       (unreadable
         ? '. A repeating wake exists, but its days could not be read (see: pmset -g sched)'
         : '') +
-      (several
-        ? '. pmset allows one repeating wake, so only the earliest ping time can be covered'
+      (daysAt.size > 1
+        ? '. pmset allows one repeating wake, so only one ping time can be covered'
         : ''),
     fix,
   };
